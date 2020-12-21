@@ -11,7 +11,7 @@ public class SudokuFindSolution{
     //int solutionCount = 0;
     int maxX , maxY, maxNumber;
     SudokuFindSolution(SudokuBoard sudokuBoard){
-        this.board = sudokuBoard.copyBoard();
+        this.board = (SudokuBoard)sudokuBoard.copyBoard();
         maxX = SudokuBoard.getMaxX(board.sudokuType);
         maxY = SudokuBoard.getMaxY(board.sudokuType);
         maxNumber = SudokuBoard.getMaxNumber(board.sudokuType);
@@ -69,7 +69,7 @@ public class SudokuFindSolution{
     private void addSolution(SudokuBoard board){
         //加入boardList，加入前检查是否重复
         if(boardList == null || boardList.size() == 0){
-            boardList.add(board.copyBoard());
+            boardList.add((SudokuBoard)board.copyBoard());
             return;
         }
         for(int i=0; i<boardList.size(); i++){
@@ -77,7 +77,7 @@ public class SudokuFindSolution{
                 return;
             }
         }
-        boardList.add(board.copyBoard());
+        boardList.add((SudokuBoard)board.copyBoard());
     }
     public void printSolution(){
         if(boardList == null || boardList.size() == 0){

@@ -70,6 +70,13 @@ public class SelectBoardActivity extends AppCompatActivity {
                 intent.putExtras(bundle);
                 startActivity(intent);
                 return;
+            case SUDOKU:
+                bundle.putString("dbBoardString", dbBoard.toJsonString());
+                intent = new Intent(SelectBoardActivity.this,PlaySudokuBoardActivity.class);
+                intent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
+                intent.putExtras(bundle);
+                startActivity(intent);
+                return;
         }
     }
 

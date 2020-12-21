@@ -23,6 +23,8 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
 
+import org.json.JSONObject;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -45,6 +47,7 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
     private SudokuBoard startBoard = null;
     public int mode = MODE_MANUAL;
 
+    AlertDialog alertDialog = null;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         //必须要先初始化board，boardview需要用到
@@ -127,6 +130,8 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
         if(board.bestSolution != null) { board.bestSolution.printSolution(); }
         startBoard.printBoard();
         boardList.add(startBoard);
+
+        (new SudokuTask(SudokuTask.TASK_CHECK_AND_SAVE)).execute();  //检查解并保存数据库
         //startBoard = new SudokuBoard(SudokuType.NINE);
     }
     private void handleClick(SudokuPiece sudokuPiece){
@@ -142,6 +147,8 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
         AlertDialog.Builder builder = new AlertDialog.Builder(PlaySudokuBoardActivity.this);
         builder.setIcon(android.R.drawable.ic_dialog_info);
         builder.setTitle("你完成了该局");
+        startBoard.seconds = getTimer();
+        (new SudokuTask(SudokuTask.TASK_SAVE_DB)).execute(); //自动保存到数据库
         String message = String.format("你用时:%d秒,步数:%d",getTimer(),currentStep);
         builder.setMessage(message);
         builder.setPositiveButton("再来一局", new DialogInterface.OnClickListener() {
@@ -196,9 +203,29 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
                 break;
             case R.id.toolbar_check:
                 check();
+                break;
+            case R.id.toolbar_hint:
+                findHint();
+                break;
             default:
         }
         return true;
+    }
+    private void showMyDialog(String message){
+        if(alertDialog == null){
+            AlertDialog.Builder dialogBuilder = new AlertDialog.Builder(PlaySudokuBoardActivity.this);
+            dialogBuilder.setTitle("sudoku");
+            dialogBuilder.setPositiveButton("确定", new DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(DialogInterface dialog, int which) {
+                    dialog.dismiss();
+                    alertDialog = null;
+                }
+            });
+            alertDialog = dialogBuilder.create();
+        }
+        alertDialog.setMessage(message);
+        alertDialog.show();
     }
     public void setTextSteps(){
         Log.v("sudoku","set steps");
@@ -286,7 +313,7 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
         }
         //Log.v("sudoku",String.format("currentstep:%d",currentStep));
     }
-    private  void help(){
+    private void help(){
         if (startBoard.bestSolution != null){
             enterHelpMode(startBoard.bestSolution);
             return;
@@ -338,12 +365,14 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
     }
     private void check(){
         //检查board是否有解且唯一解
-        String reply = ((SudokuBoard)currentBoard()).checkSolution();
-        if(reply.equals("ok")){
-            Toast.makeText(PlaySudokuBoardActivity.this,"OK",Toast.LENGTH_LONG).show();
-        }else{
-            //TODO
-            Toast.makeText(PlaySudokuBoardActivity.this,reply,Toast.LENGTH_LONG).show();
+        showMyDialog("checking");
+        (new SudokuTask(SudokuTask.TASK_CHECK_SOLUTION)).execute();
+    }
+    private void findHint(){
+        //找提示
+        List<SudokuPiece> pieceList = ((SudokuBoard)currentBoard()).findHint();
+        if (pieceList != null) {
+            boardView.drawHintPieces(pieceList);
         }
     }
     private void fillMiniNumbers(){
@@ -366,7 +395,8 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
         //boardView.help(solution);
     }
     private void save(){
-        (new SaveTask()).execute();
+        //暂存
+        (new SudokuTask(SudokuTask.TASK_SAVE_GOING_DB)).execute();
     }
 
     private void timerStart(){
@@ -407,12 +437,121 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
         return -1;
     }
 
-    class SaveTask extends AsyncTask{
+    private class SudokuTask extends AsyncTask<String,Integer,String> {
+        public final static int TASK_SAVE_DB = 1;
+        public final static int TASK_CHECK_SOLUTION = 2;
+        public final static int TASK_CHECK_AND_SAVE = 3;
+        public final static int TASK_SAVE_GOING_DB = 4;
+
+        private int taskID = TASK_SAVE_DB;
+        private String reply = null;
+        private int resultCode = 0;
+
+        SudokuTask(int taskID) {
+            this.taskID = taskID;
+        }
 
         @Override
-        protected Object doInBackground(Object[] objects) {
-            startBoard.toDBBoard().save();
+        protected String doInBackground(String... paramas) {
+            switch (taskID) {
+                case TASK_SAVE_DB:
+                    reply = startBoard.toDBBoard().save();
+                    return reply;
+                case TASK_CHECK_SOLUTION:
+                    //检查board是否有解且唯一解
+                    resultCode = ((SudokuBoard) currentBoard()).checkSolution();
+                    return "";
+                case TASK_CHECK_AND_SAVE:
+                    //先检查
+                    resultCode = ((SudokuBoard) currentBoard()).checkSolution();
+                    if (resultCode != SudokuBoard.CHECK_SOLUTION_OK) {
+                        return "";
+                    }
+                    //继续保存到数据库
+                    reply = startBoard.toDBBoard().save();
+                    return reply;
+                case TASK_SAVE_GOING_DB:
+                    //TODO
+                    reply = saveGoingToDB();
+                    return reply;
+            }
             return null;
+        }
+
+        @Override
+        protected void onPostExecute(String result) {
+            String message = "";
+            switch (taskID) {
+                case TASK_SAVE_DB:
+                    //todo
+                    break;
+                case TASK_CHECK_SOLUTION:
+                    switch (resultCode) {
+                        case SudokuBoard.CHECK_SOLUTION_OK:
+                            message = "正确";
+                            break;
+                        case SudokuBoard.CHECK_SOLUTION_NO:
+                            message = "无解";
+                            break;
+                        case SudokuBoard.CHECK_SOLUTION_NOT_ONLY:
+                            message = "解不唯一";
+                            break;
+                    }
+                    showMyDialog(message);
+                    break;
+                case TASK_CHECK_AND_SAVE:
+                    switch (resultCode) {
+                        case SudokuBoard.CHECK_SOLUTION_OK:
+                            //显示保存到数据库的情况
+                            if (reply.toLowerCase().equals("ok")) {
+                                Toast.makeText(PlaySudokuBoardActivity.this, "数独检查正确并保存到数据库中", Toast.LENGTH_SHORT).show();
+                            } else {
+                                showMyDialog(reply);
+                            }
+                            return;
+                        case SudokuBoard.CHECK_SOLUTION_NO:
+                            showMyDialog("错误：该数独无解");
+                            return;
+                        case SudokuBoard.CHECK_SOLUTION_NOT_ONLY:
+                            showMyDialog("错误：该数独解不唯一");
+                            return;
+                    }
+                case TASK_SAVE_GOING_DB:
+                    showMyDialog(reply);
+                    return;
+            }
+        }
+
+        private String saveGoingToDB() {
+            MySocket mySocket = new MySocket();
+            if (!mySocket.connect()) {
+                Log.v("dbboard", "连接服务器异常");
+                return "连接服务器异常";
+            }
+            JSONObject jsonObject = new JSONObject();
+            try {
+                jsonObject.put("command","save_going");
+                jsonObject.put("seconds",getTimer());
+                jsonObject.put("gameType",GameType.SUDOKU.toInt());
+                jsonObject.put("board",((SudokuBoard) currentBoard()).toSavedString());
+
+            }catch(Exception e){
+                e.printStackTrace();
+                return "组装发送消息json出错";
+            }
+            String sendString = jsonObject.toString();
+            if (sendString.equals("") || !mySocket.send(sendString)) {
+                Log.v("dbboard", "发送消息失败");
+                return "发送消息失败";
+            }
+
+            String reply = mySocket.recieve().toString();
+            if (reply.equals("") || reply.startsWith("failed")) {
+                Log.v("dbboard", "接收消息失败:" + reply);
+                return "接收消息失败:" + reply;
+            }
+            Log.v("dbboard", reply);
+            return reply;
         }
     }
 }

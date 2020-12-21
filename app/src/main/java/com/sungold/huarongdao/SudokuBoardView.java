@@ -10,6 +10,8 @@ import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
 
+import java.util.List;
+
 
 public class SudokuBoardView extends View {
     public final static int MODE_HELP = 1;   //帮助模式
@@ -25,17 +27,17 @@ public class SudokuBoardView extends View {
     public final static int COLOR_SMALL_BOARD_NUMBER_COMPLETED = Color.LTGRAY; //数字盘，已经完成的数字颜色的颜色
     public final static int COLOR_PERCENT_BACKGROUND = Color.LTGRAY;   //百分比宫格的背景色
     public final static int COLOR_DIAGONAL_BACKGROUND = Color.LTGRAY;   //百分比宫格的背景色
-
+    public final static int COLOR_HINT_BACKGROUND = Color.RED; //提示单元格的背景色
 
     SudokuType sudokuType = SudokuType.NINE;
-    final int padWidth = 10;           //左右的边距
+    final int padWidth = 30;           //左右的边距
     final int padHeight = 5;           //上下的边距
     int bigBoardHeight; //大board的高度
     int bigBoardPadWidth,bigBoardPadHeight; //大board的上下和左右边距
     int width,height;  //view的宽度和高度
     int sizeOfUnit;    //大board的单元格大小
     int smallBoardHeight; //小board的高度
-    int smallBoardPadWidth=30,smallBoardPadHeight=10; //小board的上下和左右中边距
+    int smallBoardPadWidth=20,smallBoardPadHeight=10; //小board的上下和左右中边距
     int sizeOfMiniUnit;  //小board的单元格大小
 
     public SudokuBoard board = null;
@@ -51,6 +53,7 @@ public class SudokuBoardView extends View {
                                     //大数字等于它的,备选小数字包含它的显示不同背景色
     private SudokuPiece selectedPiece = null; //当前选中的piece，可以是board中的piece，也可以是大小数字盘的piece
 
+    private List<SudokuPiece> hintPieceList = null;
     private ActionListener actionListener = null;
     public SudokuBoardView(Context context){
         super(context);
@@ -59,12 +62,12 @@ public class SudokuBoardView extends View {
         super(context,attrs);
     }
     public void initBoard(SudokuBoard board){
-        this.board = board.copyBoard();
+        this.board = (SudokuBoard)board.copyBoard();
         sudokuType = board.sudokuType;
         requestLayout();
     }
     public void setBoard(SudokuBoard board){
-        this.board = board.copyBoard();
+        this.board = (SudokuBoard)board.copyBoard();
         sudokuType = board.sudokuType;
         invalidate();
         //requestLayout();
@@ -133,7 +136,8 @@ public class SudokuBoardView extends View {
         if(brightColumn >= 0){
             brightColumn(canvas,brightColumn);
         }
-
+        //画提示单元格的框线
+        drawHintPieces(canvas);
         /*//点亮大数字，必须先于画数字棋盘，否则数字会被冲掉，或者位置不对
         if(brightBigNumber > 0){
             brightBigNumber(canvas,brightBigNumber);
@@ -362,9 +366,21 @@ public class SudokuBoardView extends View {
             for(int y=0; y<maxY; y++){
                 int startX = bigBoardPadWidth + x *sizeOfUnit;
                 int startY = bigBoardPadHeight + (maxY-y)*sizeOfUnit;
-                drawPiece(canvas,startX,startY,board.getPiece(x,y));
+                drawPiece(canvas,startX,startY,(SudokuPiece)board.getPiece(x,y));
             }
         }
+    }
+    private void drawHintPieces(Canvas canvas){
+        if(hintPieceList == null){
+            return ;
+        }
+        for(int i=0; i<hintPieceList.size(); i++){
+            brightPiece(canvas,hintPieceList.get(i));
+        }
+    }
+    public void drawHintPieces(List<SudokuPiece> pieceList){
+        this.hintPieceList = pieceList;
+        invalidate();
     }
     private void drawSmallBoard(Canvas canvas){
         int numberOfX = SudokuBoard.getNumberOfSmallBoardX(sudokuType);
@@ -551,7 +567,29 @@ public class SudokuBoardView extends View {
         paint.setTextSize(textSize);
         paint.setTextAlign(Paint.Align.CENTER);
         paint.setTypeface(Typeface.DEFAULT_BOLD);
+        paint.setAntiAlias(true);
         canvas.drawText(String.valueOf(number), middle, baseline, paint);
+    }
+    private void brightPiece(Canvas canvas, SudokuPiece piece){
+        //点亮piece的框线
+        if(piece.x < 0 || piece.y < 0){
+            return;
+        }
+        int left = getAndroidX(piece.x);
+        int bottom = getAndroidY(piece.y);
+        int right = left + sizeOfUnit;
+        int top = bottom - sizeOfUnit;
+        Paint paint = new Paint();
+        paint.setColor(COLOR_HINT_BACKGROUND);
+        paint.setStrokeWidth(5);
+        //画上横线
+        canvas.drawLine(left,top,right,top,paint);
+        //画下横线
+        canvas.drawLine(left,bottom,right,bottom,paint);
+        //画左竖线
+        canvas.drawLine(left,bottom,left,top,paint);
+        //画右竖线
+        canvas.drawLine(right,bottom,right,top,paint);
     }
     private void brightSquare(Canvas canvas,SudokuPiece sudokuPiece){
         //点亮sudokupiece所在的宫格
@@ -641,8 +679,12 @@ public class SudokuBoardView extends View {
         int bottom = getAndroidY(y);
         Paint paint = new Paint();
         paint.setColor(Color.BLACK);
+        paint.setStrokeWidth(5);
         if(x == y) {  //对角线一
             canvas.drawLine(left, bottom, left + sizeOfUnit, bottom - sizeOfUnit, paint);
+            if(sudokuType == SudokuType.X_STYLE && x == 4){//中心点还要画一个方向二的对角线
+                canvas.drawLine(left, bottom-sizeOfUnit, left + sizeOfUnit, bottom, paint);
+            }
         }else{ //对角线二
             canvas.drawLine(left, bottom-sizeOfUnit, left + sizeOfUnit, bottom, paint);
         }
@@ -763,7 +805,7 @@ public class SudokuBoardView extends View {
             if(board.isOutOfBoard(piece_x,piece_y)){
                 return null;
             }
-            return board.getPiece(piece_x,piece_y);
+            return (SudokuPiece)board.getPiece(piece_x,piece_y);
         }else if(y<bigBoardHeight+smallBoardHeight){
             //数字盘
             if (x <= smallBoardPadWidth){ //左边距

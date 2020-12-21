@@ -1,18 +1,24 @@
 package com.sungold.huarongdao;
 
+import android.graphics.LinearGradient;
 import android.util.Log;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.lang.reflect.Array;
 import java.util.ArrayList;
 import java.util.List;
 
 //棋盘，所有棋子的位置,构成了棋盘
 public class SudokuBoard extends Board{
+    public final static int CHECK_SOLUTION_OK = 1;
+    public final static int CHECK_SOLUTION_NO = 2;
+    public final static int CHECK_SOLUTION_NOT_ONLY = 3;
     public SudokuType sudokuType;
 
     public SudokuPiece[][] pieces = null;
+    int seconds = 0 ;  //花费的时间
 
     //生成一个棋盘，但棋盘中的棋子未设置
     SudokuBoard(SudokuType sudokuType){
@@ -29,8 +35,8 @@ public class SudokuBoard extends Board{
         }
     }
     //根据输入的棋子生成一个棋盘
-    SudokuBoard(SudokuType sudokuType, SudokuPiece[][] pieces) {
-        super("",GameType.SUDOKU,getMaxX(sudokuType),getMaxY(sudokuType));
+    SudokuBoard(String name,SudokuType sudokuType, SudokuPiece[][] pieces) {
+        super(name,GameType.SUDOKU,getMaxX(sudokuType),getMaxY(sudokuType));
         this.sudokuType = sudokuType;
         this.pieces = pieces;
     }
@@ -45,14 +51,15 @@ public class SudokuBoard extends Board{
         return null;
     }
 
-    public SudokuPiece getPiece(int x, int y) {
+    @Override
+    public Piece getPiece(int x, int y) {
         if (isOutOfBoard(x, y)) {
             return null;
         }
         return pieces[x][y];
     }
-
-    public SudokuBoard copyBoard() {
+    @Override
+    public Board copyBoard() {
         SudokuPiece[][] newPieces;
         int mxX = getMaxX(sudokuType);
         int maxY = getMaxY(sudokuType);
@@ -62,9 +69,10 @@ public class SudokuBoard extends Board{
                 newPieces[x][y] = pieces[x][y].copyPiece();
             }
         }
-        return new SudokuBoard(sudokuType,newPieces);
+        return new SudokuBoard(name,sudokuType,newPieces);
     }
 
+    @Override
     public Boolean isSuccess() {
         if (pieces == null){
             Log.e("sudokuboard","pieces is null for isSuccess");
@@ -75,17 +83,86 @@ public class SudokuBoard extends Board{
         }
         return true;
     }
-    public Boolean isFull() {
-        int maxNumber = getMaxNumber(sudokuType);
-        for (int x = 0; x < maxNumber; x++) {
-            for (int y = 0; y < maxNumber; y++) {
-                if (pieces[x][y].getNumber() <= 0 || pieces[x][y].getNumber() > maxNumber) {
-                    return false;
+
+    @Override
+    public Boolean isOutOfBoard(int x, int y) {
+        int MAX_X =  getMaxX(sudokuType);
+        int MAX_Y = getMaxY(sudokuType);
+        if (x < 0 || x >= MAX_X || y < 0 || y >= MAX_Y) {
+            return true;
+        }
+        return false;
+    }
+
+    @Override
+    public void addPiece(Piece piece) {
+
+    }
+
+    @Override
+    public void delPiece(Piece piece) {
+
+    }
+    @Override
+    public String checkBoard() {
+        //检查行
+        for(int y=0; y<getMaxY(sudokuType); y++) {
+            if (!checkBigNumberRow(y)){
+                return "failed";
+            }
+        }
+        //检查列
+        for(int x=0; x<getMaxX(sudokuType); x++){
+            if (!checkBigNumberColumn(x)){
+                return "failed";
+            }
+        }
+        //检查宫格
+        int numberOfSquareX = getNumberOfSquareX(sudokuType);
+        int numberOfSquareY = getNumberOfSquareY(sudokuType);
+        for(int x=0; x<numberOfSquareX; x++){
+            for(int y=0; y<numberOfSquareY; y++){
+                int piece_x = x*getMaxXOfSquare(sudokuType);
+                int pice_y = y*getMaxYOfSquare(sudokuType);
+                if(!checkBigNumberSquare(piece_x,pice_y)){
+                    return "failed";
                 }
             }
         }
-        return true;
+        switch(sudokuType){
+            case FOUR:
+            case SIX:
+            case NINE:
+                return "OK";
+            case X_STYLE:
+                //还需要检查两个对角线
+                if(checkBigNumberDiagonal(4,4)){
+                    return "OK";
+                }
+                return "failed";
+            case PERCENT:
+                if(checkBigNumberPercentDiagonal(4,4)
+                        && checkBigNumberPercent(2,6)
+                        && checkBigNumberPercent(6,2)){
+                    return "OK";
+                }
+                return "failed";
+            default:
+                Log.e("sudoku","unknown sudoku type in checkBoard");
+        }
+        return "OK";
     }
+
+    @Override
+    public int getHash() {
+        return 0;
+    }
+
+    @Override
+    public JSONObject toJson() {
+        return null;
+    }
+
     public Boolean isPiecesUnique(){
         //检查每一行，每一列，每一宫格数字是否重复
 
@@ -119,23 +196,10 @@ public class SudokuBoard extends Board{
             }
         }
         //检查每个小宫格的数字是否重复
-        int squareOfX, squareOfY;  //宫格X的个数，宫格Y的个数
-        int numberOfX, numberOfY; //每一宫格x的个数,y的个数
-        switch(maxNumber){
-            case 4:
-                squareOfX = squareOfY = 2;
-                numberOfX = numberOfY = 2;
-                break;
-            case 6:
-                squareOfX = 2; squareOfY = 3;
-                numberOfX = 3; numberOfY = 2;
-                break;
-            case 9:
-                squareOfX = squareOfY = numberOfX = numberOfY = 3;
-                break;
-            default:
-                return false;
-        }
+        int squareOfX = getNumberOfSquareX(sudokuType); //宫格X的个数，宫格Y的个数
+        int squareOfY = getNumberOfSquareY(sudokuType);
+        int numberOfX = getMaxXOfSquare(sudokuType);
+        int numberOfY = getMaxYOfSquare(sudokuType); //每一宫格x的个数,y的个数
         for(int X = 0; X< squareOfX; X++){
             for(int Y = 0; Y< squareOfY; Y++){
                 int[] numbers = new int[maxNumber];
@@ -153,6 +217,7 @@ public class SudokuBoard extends Board{
         }
         return true;
     }
+
     private Boolean isNumbersUnique(int[] numbers){
         //检查numbers的数字是否为从1-numbers.length，不重复
         for(int i=0; i<numbers.length; i++){
@@ -181,26 +246,23 @@ public class SudokuBoard extends Board{
         }
         return true;
     }
-
-    public Boolean isOutOfBoard(int x, int y) {
-        int MAX_X =  getMaxX(sudokuType);
-        int MAX_Y = getMaxY(sudokuType);
-        if (x < 0 || x >= MAX_X || y < 0 || y >= MAX_Y) {
+    private Boolean isPiecesUnique(List<SudokuPiece> pieceList){
+        //检查pieceList的数字是否不重复
+        if(pieceList.size() <= 2){
             return true;
         }
-        return false;
+        for(int i=0; i<pieceList.size(); i++){
+            if(pieceList.get(i).getNumber() == 0){
+                continue;
+            }
+            for(int j=0; j<i; j++){
+                if(pieceList.get(i).getNumber() == pieceList.get(j).getNumber()){
+                    return  false;
+                }
+            }
+        }
+        return true;
     }
-
-    @Override
-    public void addPiece(Piece piece) {
-
-    }
-
-    @Override
-    public void delPiece(Piece piece) {
-
-    }
-
     public void setPiece(SudokuPiece piece, int x, int y){
         //(x,y)位置，设置新的piece中的数字
         //如果piece.type 是大数字，则直接设置(x,y).number
@@ -245,22 +307,252 @@ public class SudokuBoard extends Board{
         }
     }
 
-    public String checkSolution(){
+    public int checkSolution(){
         //检查是否有解及唯一解
-        SudokuBoard startBoard = copyBoard();
+        SudokuBoard startBoard = (SudokuBoard)copyBoard();
         SudokuFindSolution findSolution = new SudokuFindSolution(startBoard);
         findSolution.findSolution();
         if(findSolution.solutionCount() == 1){
-            return "ok";
+            return CHECK_SOLUTION_OK;
         }else if(findSolution.solutionCount() == 0){
-            Log.v("sudoku","there is no solution");
-            return "there is no solution";
+            Log.v("sudoku","错误：无解");
+            return CHECK_SOLUTION_NO;
         }else{
             Log.v("sudoku","there is 1+ solution");
             findSolution.printSolution();
-            return "there is 1+ solution";
+            return CHECK_SOLUTION_NOT_ONLY;
         }
     }
+
+    public List<SudokuPiece> findHint(){
+        //找提示，返回piece数组，在view中提示
+        checkMiniNumbers();   // 找提示之前，先检查和bignumber冲突的miniNumnber
+        List<SudokuPiece> pieceList = null;
+
+        // 1、找备选数字中是唯一的。
+        pieceList = findUniqueMiniNumber();
+        if(pieceList != null){
+            Log.v("sudoku","找到唯一数字提示");
+            return pieceList;
+        }
+        // 2、找同一系列（行，列，宫格等）中多选数字唯一的。
+        pieceList = findUniqueMiniNumbers();
+        if(pieceList != null){
+            Log.v("sudoku","找到多选数字提示");
+            return pieceList;
+        }
+        //TODO
+        Log.v("sudoku","没找到提示");
+        return  null;
+    }
+    private List<SudokuPiece> findUniqueMiniNumber(){
+        //找出备选数字唯一的所有单元，以及同一系列(行，列，等)某一备选数字仅在一个单元格存在的所有单元。
+        List<SudokuPiece> pieceList = new ArrayList<>();
+        int maxX = getMaxX(sudokuType);
+        int maxY = getMaxY(sudokuType);
+
+        for(int x=0; x<maxX; x++){
+            for(int y=0; y<maxY; y++){
+                if(pieces[x][y].getMiniNumbers() == null){
+                    continue;
+                }
+                if(pieces[x][y].getNumber() == 0 && pieces[x][y].getMiniNumbers().length == 1){
+                    pieceList.add(pieces[x][y]);
+                }
+            }
+        }
+        //找出同一系列(行，列，等)某一备选数字仅在一个单元格存在的所有单元。
+        //TODO
+        if(pieceList.size() == 0){
+            return null;
+        }else{
+            return pieceList;
+        }
+    }
+    private List<SudokuPiece> findUniqueMiniNumbers(){
+        //找出备选数字组合"唯N”的单元格s，例如258,25,28,2358,
+        int maxX = getMaxX(sudokuType);
+        int maxY = getMaxY(sudokuType);
+        List<SudokuPiece> pieceList;
+
+        //同一行
+        for(int y=9; y<maxY; y++){
+            pieceList = new ArrayList<>();
+            for(int x=0; x<maxX; x++){
+                if(pieces[x][y].getNumber() > 0){
+                    continue;
+                }
+                pieceList.add(pieces[x][y]);
+            }
+            /*if(pieceList.size() <= 2){
+                continue;
+            }*/
+            if(findUniqueMiniNumbers(pieceList) != null){
+                return findUniqueMiniNumbers(pieceList);
+            }
+        }
+        //同一列
+        for(int x=0; x<maxX; x++){
+            pieceList = new ArrayList<>();
+            for(int y=0; y<maxY; y++){
+                if(pieces[x][y].getNumber() > 0){
+                    continue;
+                }
+                pieceList.add(pieces[x][y]);
+            }
+            if(findUniqueMiniNumbers(pieceList) != null){
+                return findUniqueMiniNumbers(pieceList);
+            }
+        }
+        //同一宫格
+        int numberOfSquareX = getNumberOfSquareX(sudokuType);
+        int numberOfSquareY = getNumberOfSquareY(sudokuType);
+        for(int x=0; x<numberOfSquareX; x++){
+            for(int y=0; y<numberOfSquareY; y++){
+                int piece_x = x*getMaxXOfSquare(sudokuType);
+                int pice_y = y*getMaxYOfSquare(sudokuType);
+                pieceList = removeBigNumberPiece(getSquare(piece_x,pice_y));
+                if(findUniqueMiniNumbers(pieceList) != null){
+                    return findUniqueMiniNumbers(pieceList);
+                }
+            }
+        }
+        switch(sudokuType){
+            case FOUR:
+            case SIX:
+            case NINE:
+                return null;
+            case X_STYLE:
+                //同一对角线一
+                pieceList = removeBigNumberPiece(getDiagonal(0,0));
+                if(findUniqueMiniNumbers(pieceList) != null){
+                    return findUniqueMiniNumbers(pieceList);
+                }
+                //同一对角线二
+                pieceList = removeBigNumberPiece(getDiagonal(0,8));
+                if(findUniqueMiniNumbers(pieceList) != null){
+                    return findUniqueMiniNumbers(pieceList);
+                }
+                return null;
+            case PERCENT:
+                //同一百分比对角线
+                pieceList = removeBigNumberPiece(getPercentDiagonal(0,0));
+                if(findUniqueMiniNumbers(pieceList) != null){
+                    return findUniqueMiniNumbers(pieceList);
+                }
+                //同一百分比宫格一
+                pieceList = removeBigNumberPiece(getPercent(2,6));
+                if(findUniqueMiniNumbers(pieceList) != null){
+                    return findUniqueMiniNumbers(pieceList);
+                }
+                //同一百分比宫格二
+                pieceList = removeBigNumberPiece(getPercent(6,3));
+                if(findUniqueMiniNumbers(pieceList) != null){
+                    return findUniqueMiniNumbers(pieceList);
+                }
+                return null;
+            default:
+                return null;
+        }
+    }
+    private List<SudokuPiece> removeBigNumberPiece(List<SudokuPiece> pieceList){
+        //去除pieceList的bigNumber piece
+        if(pieceList == null){
+            return null;
+        }
+        List<SudokuPiece> newList = new ArrayList<>();
+        for(int i=0; i<pieceList.size(); i++){
+            if(pieceList.get(i).getNumber() == 0){
+                newList.add(pieceList.get(i));
+            }
+        }
+        if(newList.size() == 0){
+            return null;
+        }
+        return newList;
+    }
+    private List<SudokuPiece> findUniqueMiniNumbers(List<SudokuPiece> inPieceList){
+        // 输入的piece列表中，如果存在N个备选数字仅在N个单元中存在(N>=2 && N<PieceList.size())。
+        // 同时这些单元格中不存在其他备选数字，并且其他单元格存在这些备选数字，例如：28 28 128
+
+        //单元格至少>=3才有效
+        if(inPieceList == null || inPieceList.size() <= 2){
+            return null;
+        }
+        // 1,首先找出所有数字,组成一个数字链表
+        List<Integer> numberList = new ArrayList<>();
+        for(int i=0; i<inPieceList.size(); i++){
+            int[] miniNumbers = inPieceList.get(i).getMiniNumbers();
+            if(miniNumbers == null){
+                 continue;
+            }
+            for(int j=0; j<miniNumbers.length; j++){
+                if(Numbers.isInNumberList(numberList,miniNumbers[j])){
+                    continue;
+                }
+                numberList.add(miniNumbers[j]);
+            }
+        }
+        // 2,找出所有可能的2到N-1的数字组合(N为数字总个数)
+        List<Numbers> numbersList = new ArrayList<>();
+        for(int n=2; n<numberList.size(); n++){ //从 2 到 N-1
+            //找出n个数字的组合
+            List<Numbers> newNumbersList = Numbers.findAllCombination(numberList,n);
+            //把这个组合加入链表
+            numbersList = Numbers.addNumbersList(numbersList,newNumbersList);
+        }
+
+        // 3，找符合numbersList中组合的单元格。
+        if(numbersList == null || numbersList.size() == 0){
+            Log.e("sudoku","数字组合为空");
+            return null;
+        }
+        //逐个组合进行分析pieceList
+        for(int i=0; i<numbersList.size(); i++){
+            Numbers numbers = numbersList.get(i);
+            if(numbers.count() == 0){
+                Log.e("sudoku","组合中的数字个数为0");
+                continue;
+            }
+            int countOfInclude = 0; //pieceList中包含数字组合中的数字的piece个数
+            List<SudokuPiece> pieceList = new ArrayList<>();
+            for(int j=0; j<inPieceList.size(); j++){
+                SudokuPiece piece = inPieceList.get(i);
+                if(piece.getNumber() > 0){
+                    continue;
+                }
+                if(piece.getMiniNumbers() == null || piece.getMiniNumbers().length == 0){
+                    continue;
+                }
+                Boolean onlyInclude = true; //是否只包含组合数字
+                Boolean include = false; //包含了组合数字。
+                int[] miniNumbers = piece.getMiniNumbers();
+                for(int k=0; k<miniNumbers.length; k++){
+                    if(numbers.include(miniNumbers[k])){ //该miniNumber[k]包含在numbers组合中
+                        include = true;
+                    }else{ //不包含
+                        onlyInclude = false;
+                    }
+                }
+                if(include){
+                    countOfInclude += 1;
+                }
+                if(onlyInclude){
+                    pieceList.add(piece);
+                }
+            }
+            if (pieceList.size() == numbers.count()){
+                //仅包含组合numbers的piece个数恰好等于numbers的个数
+                if(countOfInclude > numbers.count()){
+                    //同时还有其他单元格包含numbers的数字，例如25,25,238,38
+                    //找到了有效的唯一数字组合。25,25
+                    return pieceList;
+                }
+            }
+        }
+        return null;
+    }
+
     public Boolean isSameBoard(SudokuBoard board){
         int maxX = getMaxX(sudokuType);
         int maxY = getMaxY(sudokuType);
@@ -276,44 +568,6 @@ public class SudokuBoard extends Board{
         }
         return true;
     }
-    @Override
-    public String checkBoard() {
-        //检查行
-        for(int y=0; y<getMaxY(sudokuType); y++) {
-            if (!checkBigNumberRow(y)){
-                return "failed";
-            }
-        }
-        //检查列
-        for(int x=0; x<getMaxX(sudokuType); x++){
-            if (!checkBigNumberColumn(x)){
-                return "failed";
-            }
-        }
-        //检查宫格
-        int numberOfSquareX = getNumberOfSquareX(sudokuType);
-        int numberOfSquareY = getNumberOfSquareY(sudokuType);
-        for(int x=0; x<numberOfSquareX; x++){
-            for(int y=0; y<numberOfSquareY; y++){
-                int piece_x = x*getMaxXOfSquare(sudokuType);
-                int pice_y = y*getMaxYOfSquare(sudokuType);
-                if(!checkBigNumberSquare(piece_x,pice_y)){
-                    return "failed";
-                }
-            }
-        }
-        return "OK";
-    }
-
-    @Override
-    public int getHash() {
-        return 0;
-    }
-
-    @Override
-    public JSONObject toJson() {
-        return null;
-    }
 
     public void fillMiniNumbers(){
         //填入所有备选数字
@@ -324,6 +578,7 @@ public class SudokuBoard extends Board{
                 fillMiniNumbers(pieces[x][y]);
             }
         }
+        checkMiniNumbers();
     }
     public void fillMiniNumbers(SudokuPiece piece){
         //piece填入所有可能的miniNumber
@@ -332,6 +587,53 @@ public class SudokuBoard extends Board{
         }*/
         for(int i=1; i<=getMaxNumber(sudokuType); i++){
             piece.addMiniNumber(i);
+        }
+    }
+    private void checkMiniNumbers(){
+        //检查和bignumber冲突的备选数字，删除它
+        for(int x=0; x<getMaxX(sudokuType); x++){
+            for(int y=0; y<getMaxY(sudokuType); y++){
+                checkMiniNumbers(pieces[x][y]);
+            }
+        }
+    }
+    private void checkMiniNumbers(SudokuPiece piece){
+        //检查piece的mininumber，如果和系列（行，列，宫格等）的大数字冲突，就删除
+
+        if(piece.getNumber() > 0){
+            return;
+        }
+        if(piece.getMiniNumbers() == null){
+            return;
+        }
+        int[] miniNumbers = piece.getMiniNumbers();
+        for(int i=0; i<miniNumbers.length; i++){
+            //逐个检查备选数字
+            //行，列，宫格
+            if(numberExistRow(piece,miniNumbers[i])
+                    || numberExistColumn(piece,miniNumbers[i])
+                    || numberExistSquare(piece,miniNumbers[i])){
+                piece.delMiniNumber(miniNumbers[i]);
+                continue;
+            }
+            switch(sudokuType){
+                case FOUR:
+                case SIX:
+                case NINE:
+                    continue;
+                case X_STYLE:
+                    //检查对角线
+                    if(numberExistDiagonal(piece,miniNumbers[i])){
+                        piece.delMiniNumber(miniNumbers[i]);
+                    }
+                    break;
+                case PERCENT:
+                    if(numberExistPercentDiagonal(piece,miniNumbers[i])
+                            || numberExistPercent(piece,miniNumbers[i])){
+                        piece.delMiniNumber(miniNumbers[i]);
+                    }
+                    break;
+            }
         }
     }
     public Boolean isNumberUnique(SudokuPiece piece){
@@ -618,6 +920,29 @@ public class SudokuBoard extends Board{
         }
         return isNumbersUnique(numbers);
     }
+    private Boolean checkBigNumberDiagonal(int x,int y){
+        List<SudokuPiece> pieceList = getDiagonal(x,y);
+        if(pieceList == null){
+            return true;
+        }
+        return isPiecesUnique(pieceList);
+    }
+    private Boolean checkBigNumberPercent(int x,int y){
+        //检查x,y所在百分比宫格数字是否重复
+        List<SudokuPiece> pieceList = getPercent(x,y);
+        if(pieceList == null){
+            return true;
+        }
+        return isPiecesUnique(pieceList);
+    }
+    private Boolean checkBigNumberPercentDiagonal(int x,int y){
+        //检查x,y所在百分比对角线数字是否重复
+        List<SudokuPiece> pieceList = getPercentDiagonal(x,y);
+        if(pieceList == null){
+            return true;
+        }
+        return isPiecesUnique(pieceList);
+    }
     public Boolean numberCompleted(int number){
         //number在board中是否已经填完。
         int maxX = getMaxX(sudokuType);
@@ -784,8 +1109,12 @@ public class SudokuBoard extends Board{
     }
     public String toDBString() {
         //第一个数字为type，后面数字为每一个单元格的数字
-        StringBuffer stringBuffer = new StringBuffer(100);
-        stringBuffer.append(sudokuType.toInt());
+        StringBuffer stringBuffer = new StringBuffer(200);
+        //名字
+        stringBuffer.append(name+"|");
+        //type
+        stringBuffer.append(String.format("%d|",sudokuType.toInt()));
+        //board的大数字
         for(int x=0; x<getMaxX(sudokuType); x++){
             for(int y=0; y<getMaxY(sudokuType); y++){
                 stringBuffer.append(pieces[x][y].getNumber());
@@ -794,22 +1123,47 @@ public class SudokuBoard extends Board{
         return stringBuffer.toString();
     }
     public static SudokuBoard fromDBString(String string){
-        int type = Integer.valueOf(String.valueOf(string.charAt(0)));
-        SudokuType sudokuType = SudokuType.toEnum(type);
+        String name = "";
+        SudokuType sudokuType;
+        SudokuPiece[][] pieces;
+        String[] strings = string.split("\\|");
+        if(strings.length == 3){
+            name = strings[0];
+            sudokuType = SudokuType.toEnum(Integer.valueOf(strings[1]));
+            pieces =  SudokuBoard.piecesFromString(sudokuType,strings[2]);
+        }else{
+            int type = Integer.valueOf(String.valueOf(string.charAt(0)));
+            sudokuType = SudokuType.toEnum(type);
+            pieces = SudokuBoard.piecesFromString(sudokuType,string.substring(1));
+        }
         if(sudokuType == null){
-            Log.e("sudoku",String.format("unknown sudokutype:%d",type));
+            Log.e("sudoku",String.format("unknown sudokutype"));
             return null;
         }
+
+        return new SudokuBoard(name,sudokuType,pieces);
+    }
+    private String piecesToString(){
+        //pieces的大数字转换为string
+        StringBuffer stringBuffer = new StringBuffer(200);
+        for(int x=0; x<getMaxX(sudokuType); x++){
+            for(int y=0; y<getMaxY(sudokuType); y++){
+                stringBuffer.append(pieces[x][y].getNumber());
+            }
+        }
+        return stringBuffer.toString();
+    }
+    public static SudokuPiece[][] piecesFromString(SudokuType sudokuType,String string){
         int maxX = SudokuBoard.getMaxX(sudokuType);
         int maxY = SudokuBoard.getMaxY(sudokuType);
-        if(string.length() != maxX*maxY+1){
+        if(string.length() != maxX*maxY){
             Log.e("sudoku",String.format("length = %d",string.length()));
             return null;
         }
         SudokuPiece[][] pieces = new SudokuPiece[maxX][maxY];
-        for(int i=1; i<string.length(); i++){
-            int x = (i-1) / maxY;
-            int y = (i-1) % maxY;
+        for(int i=0; i<string.length(); i++){
+            int x = i / maxY;
+            int y = i % maxY;
             int number = Integer.valueOf(String.valueOf(string.charAt(i)));
             //Log.v("sudoku",String.format("%d,%d:%d",x,y,number));
             if(number == 0) {
@@ -818,11 +1172,15 @@ public class SudokuBoard extends Board{
                 pieces[x][y] = new SudokuPiece(number,Piece.PIECE_SUDOKU_BOARD,x,y,false);
             }
         }
-        return new SudokuBoard(sudokuType,pieces);
+        return pieces;
     }
     public String toSavedString(){
         StringBuffer stringBuffer = new StringBuffer(1000);
+        //名字
+        stringBuffer.append(String.format("%s|",name));
+        //type
         stringBuffer.append(String.format("%d|",sudokuType.toInt()));
+        //pieces(含备选小数字)
         if (pieces != null) {
             for (int x=0; x<maxX; x++) {
                 for(int y=0; y<maxY; y++) {
@@ -836,7 +1194,10 @@ public class SudokuBoard extends Board{
         if (string.equals("")) { return null; }
         String[] strings = string.split("\\|");
         if (strings.length <= 1) { return null; }
-        SudokuType sudokuType = SudokuType.toEnum(Integer.valueOf(strings[0]));
+        //名字
+        String name = strings[0];
+        //type
+        SudokuType sudokuType = SudokuType.toEnum(Integer.valueOf(strings[1]));
         if (sudokuType == null){
             return  null;
         }
@@ -846,7 +1207,7 @@ public class SudokuBoard extends Board{
 
         }*/
         SudokuPiece[][] pieces = new SudokuPiece[maxX][maxY];
-        for(int i=1; i<strings.length; i++){
+        for(int i=2; i<strings.length; i++){
             SudokuPiece piece = SudokuPiece.fromDBString(strings[i]);
             if(piece == null){
                 Log.v("sudoku",String.format("piece is null from %d: %s ",i,strings[i]));
@@ -854,10 +1215,11 @@ public class SudokuBoard extends Board{
             }
             pieces[piece.x][piece.y] = piece;
         }
-        return new SudokuBoard(sudokuType, pieces);
+        return new SudokuBoard(name,sudokuType, pieces);
     }
+
     public DBBoard toDBBoard(){
-        return new DBBoard("",GameType.SUDOKU,toDBString(),0,"");
+        return new DBBoard("",GameType.SUDOKU,toDBString(),seconds,"");
     }
 
     public static int getMaxNumber(SudokuType sudokuType){
@@ -1025,5 +1387,129 @@ enum SudokuType{
     }
     public  int  toInt(){
         return this.value;
+    }
+}
+class Numbers{
+    private List<Integer> numbers = new ArrayList<>();
+    Numbers(){
+        ;
+    }
+    Numbers(int number){
+        numbers.add(number);
+    }
+    public int count(){
+        if(numbers == null){
+            return 0;
+        }
+        return numbers.size();
+    }
+    public Boolean include(int number){
+        if (numbers == null){
+            return false;
+        }
+        for(int i=0; i<numbers.size(); i++){
+            if(numbers.get(i) == number){
+                return true;
+            }
+        }
+        return false;
+    }
+    public List<Integer> getNumbers(){
+        return numbers;
+    }
+    Numbers(List<Integer> numbers){
+        this.numbers = numbers;
+    }
+    private Numbers copyNumbers(){
+        Numbers newNumbers = new Numbers();
+        for(int i=0; i<numbers.size(); i++){
+            newNumbers.addNumber(numbers.get(i));
+        }
+        return newNumbers;
+    }
+    private void addNumber(int number){
+        numbers.add(number);
+    }
+    public static Boolean isInNumberList(List<Integer> numberList, int number){
+        //number是否在numberList中
+        for(int i=0; i<numberList.size(); i++){
+            if(number == numberList.get(i)){
+                return true;
+            }
+        }
+        return false;
+    }
+    public static List<Numbers> findAllCombination(List<Integer> numberList,int N){
+        //从numberList中找出N个的数字组合
+        List<Numbers> numbersList = new ArrayList<>();
+        if(numberList.size() < N){
+            return null;
+        }
+        else if(numberList.size() == N){
+            //把整个numberList作为一个numbers返回
+            numbersList.add(new Numbers(numberList));
+            return numbersList;
+        }
+
+        if(N == 1){
+            for(int i=0; i<numberList.size(); i++){
+                numbersList.add(new Numbers(numberList.get(i)));
+            }
+            return numbersList;
+        }else if(N == 2){
+            for (int i = 0; i < numberList.size(); i++) {
+                //先选择第一个数字 numberList.get(i);
+                //避免重复的情况下，第二个数字必须大于第一个
+                for(int j=i+1; j<numberList.size(); j++) {
+                    Numbers numbers = new Numbers(numberList.get(i));
+                    numbers.addNumber(numberList.get(j));
+                    numbersList.add(numbers);
+                }
+            }
+            return numbersList;
+        }else{  // N >= 3
+            for(int i=0; i<numberList.size(); i++){
+                //先固定第一个，
+                // 然后在剩下的数字中选择N-1个数字，为了避免重复，剩下的数字必须大于第一个数字
+
+                int leftCountOfNumbers = numbersList.size() - 1 - i;
+                if(leftCountOfNumbers < N-1){ //剩下的数字个数< N-1
+                    continue;
+                }
+                //生成剩下的数字链表
+                List<Integer> numberList2 = new ArrayList<>();
+                for(int j=i+1; i<numberList.size(); j++){
+                    numberList2.add(numberList.get(j));
+                }
+                //在剩下的数字链表中找出所有N-1个数字的组合
+                List<Numbers> numbersList2 = findAllCombination(numberList2,N-1);
+                if(numberList2 == null || numberList2.size() == 0){
+                    continue;
+                }
+                //第一个数字 + 剩下的数字中的N-1个组合 = N个数字的组合
+                for(int k=0; k<numbersList2.size(); k++){
+                    Numbers newNumbers = numbersList2.get(i).copyNumbers();
+                    newNumbers.addNumber(numberList.get(i));
+                    numbersList.add(newNumbers);
+                }
+            }
+            return numbersList;
+        }
+    }
+    public static List<Numbers> addNumbersList(List<Numbers> list1, List<Numbers> list2){
+        if((list1 == null || list1.size() == 0) && (list2 == null || list2.size() == 0)){
+            //两个list都为空
+            return null;
+        }
+        if (list1 == null) {
+            list1 = new ArrayList<>();
+        }
+        if(list2 == null){
+            return list1;
+        }
+        for(int i=0; i<list2.size(); i++){
+            list1.add(list2.get(i));
+        }
+        return list1;
     }
 }
