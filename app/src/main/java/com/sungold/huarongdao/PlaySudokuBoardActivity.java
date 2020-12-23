@@ -38,7 +38,7 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
     public TextView textSteps;
     public TextView textHelp = null;   //求助计算解时对话框的文本框
     public Chronometer timer = null;
-    private long recordTime = 0;        //用来记录暂停的时间点，用于恢复计时
+    private long recordTime = 0;        //用来记录暂停计时的相对时间（秒），恢复计时将从它开始继续计时。
     List<Board> boardList = new ArrayList<>();
     public List<Board> solutionBoardList = null; //用于播放解决方案的boardList
     public int currentStep = 0;
@@ -51,7 +51,7 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         //必须要先初始化board，boardview需要用到
-        initBoard();
+        initBoard(savedInstanceState);
 
         super.onCreate(savedInstanceState);
         requestWindowFeature(Window.FEATURE_NO_TITLE);
@@ -63,7 +63,7 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
         textSteps = (TextView) findViewById(R.id.text_steps);
         timer = findViewById(R.id.layout_timer);
         setTextSteps();
-        timerStart();
+        timerResume();
         boardView = (SudokuBoardView) findViewById(R.id.board_view);
         boardView.setBoard(startBoard);
         boardView.setOnActionListener(new SudokuBoardView.ActionListener() {
@@ -113,15 +113,28 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
         super.onPause();
         timerPause();
     }
+    @Override
+    protected void onSaveInstanceState(Bundle outState){
+        super.onSaveInstanceState(outState);
+        SudokuBoard board = (SudokuBoard)currentBoard();
+        outState.putString("dbBoardString",board.toGoingDBBoard().toJsonString());
+        Log.v("sudoku",board.toGoingDBBoard().toJsonString());
+    }
 
-
-    public void initBoard(){
-        //获取board
-        Bundle bundle = this.getIntent().getExtras();
-        String dbboardString = (String) bundle.getString("dbBoardString");
-        Log.v("play","dbboard:"+dbboardString);
-        DBBoard dbBoard = DBBoard.fromJsonString(dbboardString);
-        Log.v("play",dbBoard.getBoardString());
+    public void initBoard(Bundle savedInstanceState){
+        // 两个入口:从保存的状态中恢复，或者上一个activity传递过来的参数恢复。
+        DBBoard dbBoard;
+        if(savedInstanceState != null){
+            String dbBoardString = savedInstanceState.getString("dbBoardString");
+            dbBoard = DBBoard.fromJsonString(dbBoardString);
+            Log.v("sudoku","恢复dbboard:"+dbBoardString);
+        }else {
+            Bundle bundle = this.getIntent().getExtras();
+            String dbboardString = (String) bundle.getString("dbBoardString");
+            Log.v("play", "dbboard:" + dbboardString);
+            dbBoard = DBBoard.fromJsonString(dbboardString);
+        }
+        Log.v("play", dbBoard.getBoardString());
         Board board = dbBoard.toBoard();
         if (board == null) {
             Log.v("boardview","获取board失败");
@@ -131,8 +144,11 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
         startBoard.printBoard();
         boardList.add(startBoard);
 
-        (new SudokuTask(SudokuTask.TASK_CHECK_AND_SAVE)).execute();  //检查解并保存数据库
+        if(dbBoard.dbType == DBBoard.DBBOARD_TYPE_START) {
+            (new SudokuTask(SudokuTask.TASK_CHECK_AND_SAVE)).execute();  //检查解并保存数据库
+        }
         //startBoard = new SudokuBoard(SudokuType.NINE);
+        recordTime = ((SudokuBoard) board).seconds; //从此开始恢复计时
     }
     private void handleClick(SudokuPiece sudokuPiece){
         //有改变才回调给playActivity处理
@@ -280,6 +296,7 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
         boardView.setBoard((SudokuBoard)currentBoard());
         Log.v("sudoku",String.format("currentstep:%d",currentStep));
         setTextSteps();
+        timerStart(); //重新开始计时
     }
     public void pushBoard(Board board){
         board.printBoard();
@@ -408,20 +425,23 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
         timer.start();
     }
     private void timerPause(){
-        Log.v("sudoku","暂停计时");
-        recordTime = SystemClock.elapsedRealtime();
+        //recordTime = SystemClock.elapsedRealtime();
+        recordTime = getTimer();
         timer.stop();
+        Log.v("sudoku",String.format("暂停计时:%d",recordTime));
     }
     private void timerResume(){
         Log.v("sudoku","恢复计时");
+        //从recordTime开始计时
         if(recordTime > 0){
-            timer.setBase((timer.getBase()+(SystemClock.elapsedRealtime()-recordTime)));
+            //timer.setBase((timer.getBase()+(SystemClock.elapsedRealtime()-recordTime)));
+            timer.setBase(SystemClock.elapsedRealtime()-recordTime*1000);
         }
         timer.start();
     }
     private int getTimer(){
         //读取计时器，转换为秒
-        String string = timer.getText().toString();
+        /*String string = timer.getText().toString();
         if(string.length()==7){
             String[] split = string.split(":");
             int hour = Integer.parseInt(split[0]);
@@ -434,7 +454,8 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
             int second = Integer.parseInt(split[1]);
             return min*60+second;
         }
-        return -1;
+        return -1;*/
+        return (int) ((SystemClock.elapsedRealtime()-timer.getBase())/1000);
     }
 
     private class SudokuTask extends AsyncTask<String,Integer,String> {
@@ -471,8 +492,9 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
                     reply = startBoard.toDBBoard().save();
                     return reply;
                 case TASK_SAVE_GOING_DB:
-                    //TODO
-                    reply = saveGoingToDB();
+                    Log.v("sudoku","save_going");
+                    ((SudokuBoard)currentBoard()).seconds = getTimer();
+                    reply = ((SudokuBoard)currentBoard()).toGoingDBBoard().save();
                     return reply;
             }
             return null;
@@ -522,36 +544,5 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
             }
         }
 
-        private String saveGoingToDB() {
-            MySocket mySocket = new MySocket();
-            if (!mySocket.connect()) {
-                Log.v("dbboard", "连接服务器异常");
-                return "连接服务器异常";
-            }
-            JSONObject jsonObject = new JSONObject();
-            try {
-                jsonObject.put("command","save_going");
-                jsonObject.put("seconds",getTimer());
-                jsonObject.put("gameType",GameType.SUDOKU.toInt());
-                jsonObject.put("board",((SudokuBoard) currentBoard()).toSavedString());
-
-            }catch(Exception e){
-                e.printStackTrace();
-                return "组装发送消息json出错";
-            }
-            String sendString = jsonObject.toString();
-            if (sendString.equals("") || !mySocket.send(sendString)) {
-                Log.v("dbboard", "发送消息失败");
-                return "发送消息失败";
-            }
-
-            String reply = mySocket.recieve().toString();
-            if (reply.equals("") || reply.startsWith("failed")) {
-                Log.v("dbboard", "接收消息失败:" + reply);
-                return "接收消息失败:" + reply;
-            }
-            Log.v("dbboard", reply);
-            return reply;
-        }
     }
 }
