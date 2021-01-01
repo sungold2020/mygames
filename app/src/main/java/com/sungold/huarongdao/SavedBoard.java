@@ -4,7 +4,7 @@ public class SavedBoard {
     //用于存储在哈希表中的棋盘，不直接用class Board，是为了节省内存。
     //roles，二维数组，数组中的值为role的type。
     //short[][] pieces;
-    long hash;
+    long hash;  //如果hash不重复，只需要存储hash值即可
     SavedBoard(long hash){
         /*pieces = new short[MAX_X][MAX_Y];
         for(int x=0; x<MAX_X; x++) {

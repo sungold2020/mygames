@@ -11,7 +11,11 @@ public class SudokuPiece extends Piece{
     @Override
     public void printPiece(){
         if(type == Piece.PIECE_SUDOKU_BOARD){
-            Log.v("sudoku",String.format("(%d,%d):%d",x,y,number));
+            //Log.v("sudoku",String.format("(%d,%d):%d",x,y,number));
+            Log.v("sudoku",toDBString());
+            /*if(number == 0 && miniNumbers != null){
+                for(int i=0; i<miniNumbers.length; i++)
+            }*/
         }else
         {
             Log.v("sudoku",String.format("%d:%d",type,number));
@@ -126,7 +130,7 @@ public class SudokuPiece extends Piece{
         }
         StringBuffer stringBuffer = new StringBuffer(miniNumbers.length);
         for(int i=0; i<miniNumbers.length; i++){
-            stringBuffer.append(miniNumbers[i]);
+            stringBuffer.append(String.valueOf(miniNumbers[i]));
         }
         return  stringBuffer.toString();
     }
@@ -140,27 +144,38 @@ public class SudokuPiece extends Piece{
         }
         int[] miniNumbers = new int[string.length()];
         for(int i=0; i<string.length(); i++){
-            miniNumbers[i] = Integer.valueOf(string.charAt(i));
+            miniNumbers[i] = Integer.valueOf(String.valueOf(string.charAt(i)));
         }
         return miniNumbers;
     }
     @Override
     public String toDBString(){
         //转换成一个字符串，用于存储再数据库
-        return String.format("%d,%d,%d,%s",x,y,number,miniNumbersToString());
+        if(isModifiable()){
+            return String.format("%d,%d,%d,%d,%s",x,y,number,1,miniNumbersToString());
+        }else{
+            return String.format("%d,%d,%d,%d,%s",x,y,number,0,miniNumbersToString());
+        }
     }
 
     public static SudokuPiece fromDBString(String string){
         if (string.equals("")) { return null; }
         String[] strings = string.split(",");
-        if (strings.length != 4) { return null; }
+        if (strings.length != 5) { return null; }
         int x = Integer.valueOf(strings[0]);
         int y = Integer.valueOf(strings[1]);
         int number = Integer.valueOf(strings[2]);
+        int intIsModifiable = Integer.valueOf(strings[3]);
         if (number > 0){
-            return new SudokuPiece(number,SudokuPiece.PIECE_SUDOKU_BOARD,x,y);
+            if(intIsModifiable == 0){
+                return new SudokuPiece(number,SudokuPiece.PIECE_SUDOKU_BOARD,x,y,false);
+            }else{
+                return new SudokuPiece(number,SudokuPiece.PIECE_SUDOKU_BOARD,x,y);
+            }
         }
-        int[] miniNumbers = SudokuPiece.miniNumbersFromString(strings[3]);
+        int[] miniNumbers = SudokuPiece.miniNumbersFromString(strings[4]);
+
+
         return new SudokuPiece(miniNumbers,SudokuPiece.PIECE_SUDOKU_BOARD,x,y);
     }
 }

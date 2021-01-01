@@ -51,6 +51,7 @@ public class BoardLevelActivity extends AppCompatActivity {
         Button buttonHard = (Button) findViewById(R.id.button_select_hard);
         Button buttonVeryHard = (Button) findViewById(R.id.button_select_veryhard);
         Button buttonAdd = (Button) findViewById(R.id.button_add);
+        Button buttonSaved = (Button) findViewById(R.id.button_saved);
 
         setClickListener(buttonVeryEasy,SELECT_VERY_EASY);
         setClickListener(buttonEasy,SELECT_EASY);
@@ -63,31 +64,55 @@ public class BoardLevelActivity extends AppCompatActivity {
                 //
                 //Intent intent = new Intent(getActivity().getApplicationContext(),TorrentDetailActivity.class);
                 Intent intent;
-                if (gameType == GameType.HUARONGDAO){
-                    intent = new Intent(BoardLevelActivity.this, HuaAddBoardActivity.class);
-                } else if (gameType == GameType.BLOCK){
-                    //intent = new Intent(BoardLevelActivity.this,BlockAddActivity.class);
-                    Bundle bundle = new Bundle();
-                    bundle.putSerializable("gameType",gameType);
-                    intent = new Intent(BoardLevelActivity.this,AddBoardActivity.class);
-                    intent.putExtras(bundle);
-                } else if (gameType == GameType.BOX){
-                    Bundle bundle = new Bundle();
-                    bundle.putSerializable("gameType",gameType);
-                    intent = new Intent(BoardLevelActivity.this,AddBoardActivity.class);
-                    intent.putExtras(bundle);
-                } else if (gameType == GameType.SUDOKU){
-                    Bundle bundle = new Bundle();
-                    bundle.putSerializable("gameType",gameType);
-                    intent = new Intent(BoardLevelActivity.this,AddSukoduBoardActivity.class);
-                    intent.putExtras(bundle);
-                }else{
-                    return;
+                Bundle bundle;
+                switch(gameType){
+                    case HUARONGDAO:
+                        intent = new Intent(BoardLevelActivity.this, HuaAddBoardActivity.class);
+                        break;
+                    case BLOCK:
+                    case BOX:
+                        bundle = new Bundle();
+                        bundle.putSerializable("gameType",gameType);
+                        intent = new Intent(BoardLevelActivity.this,AddBoardActivity.class);
+                        intent.putExtras(bundle);
+                        break;
+                    case SUDOKU:
+                        bundle = new Bundle();
+                        bundle.putSerializable("gameType",gameType);
+                        intent = new Intent(BoardLevelActivity.this,AddSukoduBoardActivity.class);
+                        intent.putExtras(bundle);
+                        break;
+                    default:
+                        return;
                 }
+                //Log.v("boardlevel","start activity");
                 startActivity(intent);
             }
         });
-
+        buttonSaved.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Intent intent;
+                Bundle bundle;
+                switch(gameType){
+                    case HUARONGDAO:
+                        //TODO
+                        return;
+                    case BLOCK:
+                    case BOX:
+                        //TODO
+                        return;
+                    case SUDOKU:
+                        bundle = new Bundle();
+                        bundle.putSerializable("gameType",gameType);
+                        intent = new Intent(BoardLevelActivity.this, SelectGoingBoardActivity.class);
+                        intent.putExtras(bundle);
+                        startActivity(intent);
+                    default:
+                        return;
+                }
+            }
+        });
         getPref();
     }
     public void setClickListener(Button button,int select){

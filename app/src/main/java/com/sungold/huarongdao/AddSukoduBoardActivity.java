@@ -95,11 +95,15 @@ public class AddSukoduBoardActivity extends AppCompatActivity {
                         break;
                     case R.id.radio_percent:
                         sudokuType = SudokuType.PERCENT;
+                        break;
+                    case R.id.radio_super:
+                        sudokuType = SudokuType.SUPER;
+                        break;
                     default:
                         Log.v("addSudoku","unknown type");
                         dialog.dismiss();
                 }
-                boardView.initBoard(new SudokuBoard(sudokuType));
+                boardView.initBoard(new SudokuBoard(name,sudokuType));
                 toolbarTitle.setText(name);
                 dialog.dismiss();
             }

@@ -45,6 +45,7 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
     public int currentStepOfSolution = 0;
 
     private SudokuBoard startBoard = null;
+    private int dbType;
     public int mode = MODE_MANUAL;
 
     AlertDialog alertDialog = null;
@@ -123,6 +124,7 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
 
     public void initBoard(Bundle savedInstanceState){
         // 两个入口:从保存的状态中恢复，或者上一个activity传递过来的参数恢复。
+        // 两种类型，来自于暂存的TYPE_GOING或者起始的TYPE_START，start类型要保存到数据库中去。
         DBBoard dbBoard;
         if(savedInstanceState != null){
             String dbBoardString = savedInstanceState.getString("dbBoardString");
@@ -143,12 +145,13 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
         if(board.bestSolution != null) { board.bestSolution.printSolution(); }
         startBoard.printBoard();
         boardList.add(startBoard);
-
+        dbType = dbBoard.dbType;
         if(dbBoard.dbType == DBBoard.DBBOARD_TYPE_START) {
             (new SudokuTask(SudokuTask.TASK_CHECK_AND_SAVE)).execute();  //检查解并保存数据库
         }
         //startBoard = new SudokuBoard(SudokuType.NINE);
         recordTime = ((SudokuBoard) board).seconds; //从此开始恢复计时
+        Log.v("sudoku",String.format("recordTime=%d",recordTime));
     }
     private void handleClick(SudokuPiece sudokuPiece){
         //有改变才回调给playActivity处理
@@ -159,12 +162,22 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
     }
 
     public void finishBoard(){
-        //完成棋局时调用
+        //完成棋局时,提示用户已完成。
+        //type_start则保存数据库，更新seconds
+        //type_going则还需要同时删除going_boards中的记录
+
+        //保存到数据库中，更新seconds
+        (new SudokuTask(SudokuTask.TASK_SAVE_DB)).execute(); //自动保存到数据库
+        //type_going，同步删除记录
+        if(dbType == DBBoard.DBBOARD_TYPE_GOING){
+            (new SudokuTask(SudokuTask.TASK_DELETE_GOING_DB)).execute();
+        }
+        //弹出对话框提示用户
         AlertDialog.Builder builder = new AlertDialog.Builder(PlaySudokuBoardActivity.this);
         builder.setIcon(android.R.drawable.ic_dialog_info);
         builder.setTitle("你完成了该局");
         startBoard.seconds = getTimer();
-        (new SudokuTask(SudokuTask.TASK_SAVE_DB)).execute(); //自动保存到数据库
+
         String message = String.format("你用时:%d秒,步数:%d",getTimer(),currentStep);
         builder.setMessage(message);
         builder.setPositiveButton("再来一局", new DialogInterface.OnClickListener() {
@@ -299,7 +312,7 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
         timerStart(); //重新开始计时
     }
     public void pushBoard(Board board){
-        board.printBoard();
+        //board.printBoard();
         //当回退到某一步时，如果这个时候手工移动了棋子，就删除currentStep以后的棋盘，兵从当前位置add
         while(currentStep < boardList.size()-1){
             popBoard();
@@ -387,14 +400,62 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
     }
     private void findHint(){
         //找提示
-        List<SudokuPiece> pieceList = ((SudokuBoard)currentBoard()).findHint();
+        /*List<SudokuPiece> pieceList = ((SudokuBoard)currentBoard()).findHint();
         if (pieceList != null) {
             boardView.drawHintPieces(pieceList);
+        }*/
+        SudokuBoard board = (SudokuBoard) currentBoard();
+        board.checkMiniNumbers();   // 找提示之前，先检查和bignumber冲突的miniNumnber
+        List<SudokuPiece> pieceList = null;
+
+        // 1、找备选数字中是唯一的。
+        pieceList = board.findUniqueMiniNumber();
+        if(pieceList != null){
+            Log.v("sudoku","找到唯一数字提示");
+            boardView.drawHintPieces(pieceList);
+            Toast.makeText(PlaySudokuBoardActivity.this,"找到备选数字唯一的单元格",Toast.LENGTH_LONG).show();
+            return;
         }
+        // 2、找同一系列（行，列，宫格等）中多选数字唯一的。
+        pieceList = board.findUniqueMiniNumbers();
+        if(pieceList != null){
+            Log.v("sudoku","找到多选数字提示");
+            boardView.drawHintPieces(pieceList);;
+            Toast.makeText(PlaySudokuBoardActivity.this,"找到备选数字组合唯N的单元格",Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        //3、找一个宫格中仅有同一行/同一列/同意对角线才有备选数字的情况。（这样可以删除同一行/列/对角线的其他位置的备选数字）
+        for(int n=1; n<=board.getMaxNumber(board.sudokuType); n++){
+            //宫格中miniNumber仅在同一行出现
+            pieceList = board.findMiniInLineOfSquare(n);
+            if(pieceList != null && pieceList.size() > 0){
+                boardView.drawHintPieces(pieceList);
+                Toast.makeText(PlaySudokuBoardActivity.this,String.format("找到宫格中仅在同一行存在备选数字:%d",n),Toast.LENGTH_LONG).show();
+                return;
+            }
+            //宫格中miniNumber仅在同一列出现
+            pieceList = board.findMiniInColumnOfSquare(n);
+            if(pieceList != null && pieceList.size() > 0){
+                boardView.drawHintPieces(pieceList);
+                Toast.makeText(PlaySudokuBoardActivity.this,String.format("找到宫格中仅在同一列存在备选数字:%d",n),Toast.LENGTH_LONG).show();
+                return;
+            }
+            //宫格中miniNumber仅在对角线出现
+            pieceList = board.findMiniInDiagnoalOfSquare(n);
+            if(pieceList != null && pieceList.size() > 0){
+                boardView.drawHintPieces(pieceList);
+                Toast.makeText(PlaySudokuBoardActivity.this,String.format("找到宫格中仅在同一对角线存在备选数字:%d",n),Toast.LENGTH_LONG).show();
+                return;
+            }
+        }
+        Log.v("sudoku","没找到提示");
+        Toast.makeText(PlaySudokuBoardActivity.this,"没找到可用提示",Toast.LENGTH_LONG).show();
     }
     private void fillMiniNumbers(){
         //提示：填入所有备选数字
         boardView.board.fillMiniNumbers();
+        pushBoard(boardView.board.copyBoard());
         boardView.invalidate();
     }
     public void enterHelpMode(Solution solution){
@@ -413,6 +474,7 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
     }
     private void save(){
         //暂存
+        Log.v("sudoku","暂存goingDB");
         (new SudokuTask(SudokuTask.TASK_SAVE_GOING_DB)).execute();
     }
 
@@ -431,7 +493,7 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
         Log.v("sudoku",String.format("暂停计时:%d",recordTime));
     }
     private void timerResume(){
-        Log.v("sudoku","恢复计时");
+        Log.v("sudoku",String.format("恢复计时:%d",recordTime));
         //从recordTime开始计时
         if(recordTime > 0){
             //timer.setBase((timer.getBase()+(SystemClock.elapsedRealtime()-recordTime)));
@@ -463,6 +525,7 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
         public final static int TASK_CHECK_SOLUTION = 2;
         public final static int TASK_CHECK_AND_SAVE = 3;
         public final static int TASK_SAVE_GOING_DB = 4;
+        public final static int TASK_DELETE_GOING_DB = 5;
 
         private int taskID = TASK_SAVE_DB;
         private String reply = null;
@@ -476,7 +539,9 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
         protected String doInBackground(String... paramas) {
             switch (taskID) {
                 case TASK_SAVE_DB:
-                    reply = startBoard.toDBBoard().save();
+                    //保存DB，仅保存modifiable=piece的棋子
+                    startBoard.seconds = getTimer();
+                    reply = startBoard.toInitialBoard().toDBBoard().save();
                     return reply;
                 case TASK_CHECK_SOLUTION:
                     //检查board是否有解且唯一解
@@ -496,6 +561,8 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
                     ((SudokuBoard)currentBoard()).seconds = getTimer();
                     reply = ((SudokuBoard)currentBoard()).toGoingDBBoard().save();
                     return reply;
+                case TASK_DELETE_GOING_DB:
+
             }
             return null;
         }
@@ -506,6 +573,7 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
             switch (taskID) {
                 case TASK_SAVE_DB:
                     //todo
+                    Toast.makeText(PlaySudokuBoardActivity.this,reply,Toast.LENGTH_SHORT);
                     break;
                 case TASK_CHECK_SOLUTION:
                     switch (resultCode) {
@@ -540,6 +608,9 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
                     }
                 case TASK_SAVE_GOING_DB:
                     showMyDialog(reply);
+                    return;
+                case TASK_DELETE_GOING_DB:
+                    Toast.makeText(PlaySudokuBoardActivity.this,reply,Toast.LENGTH_SHORT).show();
                     return;
             }
         }

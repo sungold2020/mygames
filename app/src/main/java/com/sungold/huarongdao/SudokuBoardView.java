@@ -7,6 +7,7 @@ import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.util.AttributeSet;
 import android.util.Log;
+import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 
@@ -26,6 +27,7 @@ public class SudokuBoardView extends View {
     public final static int COLOR_SMALL_BOARD_NUMBER = Color.BLACK; //数字盘的数字颜色
     public final static int COLOR_SMALL_BOARD_NUMBER_COMPLETED = Color.LTGRAY; //数字盘，已经完成的数字颜色的颜色
     public final static int COLOR_PERCENT_BACKGROUND = Color.LTGRAY;   //百分比宫格的背景色
+    public final static int COLOR_SUPER_BACKGROUND = Color.LTGRAY;     //super宫格的背景色
     public final static int COLOR_DIAGONAL_BACKGROUND = Color.LTGRAY;   //百分比宫格的背景色
     public final static int COLOR_HINT_BACKGROUND = Color.RED; //提示单元格的背景色
 
@@ -189,12 +191,61 @@ public class SudokuBoardView extends View {
         }
         return true;
     }
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event){
+        Log.v("sudoku",String.format("press key(%d,%s)",keyCode,event.toString()));
+        switch(keyCode){
+            case KeyEvent.KEYCODE_1:
+                handlePressNumber(1);
+                break;
+            case KeyEvent.KEYCODE_2:
+                handlePressNumber(2);
+                break;
+            case KeyEvent.KEYCODE_3:
+                handlePressNumber(3);
+                break;
+            case KeyEvent.KEYCODE_4:
+                handlePressNumber(4);
+                break;
+            case KeyEvent.KEYCODE_5:
+                handlePressNumber(5);
+                break;
+            case KeyEvent.KEYCODE_6:
+                handlePressNumber(6);
+                break;
+            case KeyEvent.KEYCODE_7:
+                handlePressNumber(7);
+                break;
+            case KeyEvent.KEYCODE_8:
+                handlePressNumber(8);
+                break;
+            case KeyEvent.KEYCODE_9:
+                handlePressNumber(9);
+                break;
+        }
+        return true;
+    }
+    private void handlePressNumber(int number){
+        // 按下数字键number，相当于按了大数字盘的对应数字
+        if(number > SudokuBoard.getMaxNumber(sudokuType)){
+            return;
+        }
+        handleClickPiece(new SudokuPiece(number,SudokuPiece.PIECE_SUDOKU_NUMBER,-1,-1));
+    }
     private void handleClickPiece(SudokuPiece piece){
         //actionListener.onActionUp(clickPiece); 回调给activity去处理
         //根据之前选中的piece来作不同处理
+
+        //首先去除hint
+        hintPieceList = null;
         if(selectedPiece == null){
             selectedPiece = piece;
-            if(selectedPiece.type != Piece.PIECE_SUDOKU_BOARD){
+            if(selectedPiece.type == Piece.PIECE_SUDOKU_BOARD) {
+                if(piece.getNumber() > 0) {
+                    //点亮该数字
+                    selectedNumber = selectedPiece.getNumber();
+                }
+            }else{
                 //点亮数字
                 selectedNumber = selectedPiece.getNumber();
             }
@@ -211,18 +262,22 @@ public class SudokuBoardView extends View {
                 switch(piece.type){
                     case Piece.PIECE_SUDOKU_BOARD:
                         //上次选中board单元格，这次选中的也是board单元格
-                        // 1.切换选中单元格
                         if(isPieceSelected(piece)) {
                             //同一个单元格，取消选中
                             selectedPiece = null;
+                            //如果数字被点亮，也同步取消
+                            if(piece.getNumber() > 0){
+                                selectedNumber = 0;
+                            }
                         }else {
-                            //不同单元格，切换选中
+                            //1，不同单元格，切换选中
                             selectedPiece = piece;
+                            // 2.如果单元格已经填写数字，点亮该数字
+                            if(piece.getNumber() > 0){
+                                selectedNumber = piece.getNumber();
+                            }
                         }
-                        // 2.如果单元格已经填写数字，点亮该数字
-                        if(piece.getNumber() > 0){
-                            selectedNumber = piece.getNumber();
-                        }
+
                         return;
                     case Piece.PIECE_SUDOKU_NUMBER:
                         //上次选中board单元格，这次选中bignumber
@@ -315,18 +370,20 @@ public class SudokuBoardView extends View {
         for(int i=0; i<=maxNumber; i++){
             Paint paint = new Paint();
             paint.setColor(Color.LTGRAY);
+            paint.setStrokeWidth(2);
             int startX = bigBoardPadWidth;
             int stopX = width-bigBoardPadWidth;
             int startY = (maxNumber-i)*sizeOfUnit+bigBoardPadHeight;
-            int stopY = (maxNumber-i)*sizeOfUnit+bigBoardPadHeight;
+            int stopY = startY;
             canvas.drawLine(startX,startY,stopX,stopY,paint);
         }
         //画竖线
         for(int i=0; i<=maxNumber; i++){
             Paint paint = new Paint();
             paint.setColor(Color.LTGRAY);
-            int startX = bigBoardPadWidth + i*sizeOfUnit-1;
-            int stopX = bigBoardPadWidth + i*sizeOfUnit+1;
+            paint.setStrokeWidth(2);
+            int startX = bigBoardPadWidth + i*sizeOfUnit;
+            int stopX =startX;
             int startY = bigBoardPadHeight;
             int stopY = bigBoardHeight-bigBoardPadHeight;
             canvas.drawLine(startX,startY,stopX,stopY,paint);
@@ -364,9 +421,7 @@ public class SudokuBoardView extends View {
         int maxY = SudokuBoard.getMaxY(sudokuType);
         for(int x=0; x<maxX; x++){
             for(int y=0; y<maxY; y++){
-                int startX = bigBoardPadWidth + x *sizeOfUnit;
-                int startY = bigBoardPadHeight + (maxY-y)*sizeOfUnit;
-                drawPiece(canvas,startX,startY,(SudokuPiece)board.getPiece(x,y));
+                drawPiece(canvas,(SudokuPiece)board.getPiece(x,y));
             }
         }
     }
@@ -471,21 +526,88 @@ public class SudokuBoardView extends View {
         }
     }
 
-    private void drawPiece(Canvas canvas, int leftOfPiece, int bottomOfPiece, SudokuPiece piece){
+    private void drawPiece(Canvas canvas, SudokuPiece piece){
         /*
-        leftOfPiece,bottomOfPiece为起始坐标，宽度和高度都为sizeOfUnit.
-        背景色：
-            如果被选中，显示背景色（优先）
-            如果数字等于brightNumber，显示背景色COLOR_BIGNUMBER_BACKGROUNF
-            如果备选数字包含brrightNumber，显示背景色COLOR_SMALLNUMBER_BACKGROUND
-        数字颜色：
-            不可更改的：COLOR_BIGNUMBER_UNMODIFIABLE
-            可更改的：COLOR_BIGNUMBER_MODIFIABLE
+        画单元格（含背景，大小数字等）
+
+
         */
         if(piece == null){
             return;
         }
-        //对角线/百分比宫格背景单独标识
+        //  画背景
+        // 如果属于百分比宫格，显示背景色COLOR_PERCENT_BACKGROUND
+        // 如果属于super宫格，显示背景色COLOR_SUPER_BACKGROUND
+        // 如果备选数字包含brrightNumber，显示背景色COLOR_SMALLNUMBER_BACKGROUND
+        // 如果数字等于brightNumber，显示背景色COLOR_BIGNUMBER_BACKGROUND
+        // 如果被选中，显示背景色（优先）
+        // 如果多个条件都满足，层层覆盖，所以最后显示的是最后画的背景色
+        if(sudokuType == SudokuType.PERCENT && board.isInPercentSquare(piece)){
+            drawBoardBackground(canvas,piece.x,piece.y,COLOR_PERCENT_BACKGROUND);
+        }
+        if(sudokuType == SudokuType.SUPER && board.isInSuperSquare(piece)){
+            drawBoardBackground(canvas,piece.x,piece.y,COLOR_SUPER_BACKGROUND);
+        }
+        if(piece.getNumber() > 0 && selectedNumber == piece.getNumber()){
+            drawBoardBackground(canvas, piece.x, piece.y, COLOR_BIGNUMBER_BACKGROUND);
+        }else if(piece.getNumber() == 0 && piece.haveMiniNumber(selectedNumber) && !board.numberExist(piece,selectedNumber)){
+            drawBoardBackground(canvas,piece.x,piece.y,COLOR_SMALLNUMBER_BACKGROUND);
+        }
+        if(isPieceSelected(piece)){
+            drawBoardBackground(canvas,piece.x,piece.y,COLOR_SELECTED_BACKGROUND);
+        }
+        //画对角线
+        if(sudokuType == SudokuType.X_STYLE && board.isInDiagonal(piece)){
+                drawDiagonal(canvas,piece.x,piece.y);
+        }else if(sudokuType == SudokuType.PERCENT && board.isInPercentDiagonal(piece)) {
+                drawDiagonal(canvas, piece.x, piece.y);
+        }
+        //写数字
+        // 不可更改的：COLOR_BIGNUMBER_UNMODIFIABLE
+        // 可更改的：COLOR_BIGNUMBER_MODIFIABLE
+        int leftOfPiece = getAndroidX(piece.x);
+        int bottomOfPiece = getAndroidY(piece.y);
+        if (piece.getNumber() > 0){  //大数字
+            int color;
+            if (!piece.isModifiable()){  //不可修改
+                color = COLOR_BIGNUMBER_UNMODIFIABLE;
+            }else if(board.isNumberUnique(piece)){ //数字唯一
+                color = COLOR_BIGNUMBER_MODIFIABLE;
+            }else{  //数字不唯一(冲突)
+                color = COLOR_BIGNUMBER_CONFLICT;
+            }
+            drawNumber(canvas,
+                    leftOfPiece,
+                    bottomOfPiece-sizeOfUnit,
+                    leftOfPiece +sizeOfUnit,
+                    bottomOfPiece,
+                    piece.getNumber(),color);
+        }else{ // 备选小数字
+            int[] numbers = piece.getMiniNumbers();
+            if (numbers != null) {
+                for (int i = 0; i < numbers.length; i++) {
+                    int left, right,top,bottom;
+                    int numberOfX, numberOfY;  //备选数字中，每行/每列的数字个数
+                    int optionUnitWidth, optionUnitHeight; //备选框中，单元格的宽度，高度
+
+                    if(board.numberExist(piece,numbers[i])){
+                        //该miniNumber和board中的数字冲突（同行，同列，同宫格中已经存在该数字），就不显示
+                        continue;
+                    }
+                    numberOfX = SudokuBoard.getNumberOfSquareX(sudokuType);
+                    numberOfY = SudokuBoard.getNumberOfSquareY(sudokuType);
+                    optionUnitWidth = sizeOfUnit / numberOfX;
+                    optionUnitHeight = sizeOfUnit / numberOfY;
+                    left = ((numbers[i]-1) % numberOfX) * optionUnitWidth + leftOfPiece;
+                    right = left + optionUnitWidth;
+                    bottom =  bottomOfPiece - ((numbers[i]-1) / numberOfX) * optionUnitHeight;
+                    top = bottom - optionUnitHeight;
+                    drawNumber( canvas,left,top,right,bottom,numbers[i],Color.BLACK);
+                }
+            }
+        }
+
+        /*// 对角线/百分比宫格背景单独标识
         if(sudokuType == SudokuType.X_STYLE){
             if(board.isInDiagonal(piece)){
                 drawDiagonal(canvas,piece.x,piece.y);
@@ -554,7 +676,7 @@ public class SudokuBoardView extends View {
                     drawNumber( canvas,left,top,right,bottom,numbers[i],Color.BLACK);
                 }
             }
-        }
+        }*/
     }
     private void drawNumber(Canvas canvas,int left, int top, int right, int bottom, int number,int color){
         //在矩阵中填写数字number
