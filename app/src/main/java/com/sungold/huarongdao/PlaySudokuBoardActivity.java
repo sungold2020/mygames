@@ -16,14 +16,13 @@ import android.view.View;
 import android.view.Window;
 import android.widget.Button;
 import android.widget.Chronometer;
+import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
-
-import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -36,6 +35,7 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
     public Menu menu;
     public TextView toolbarTitle;
     public TextView textSteps;
+    public TextView textHint;
     public TextView textHelp = null;   //求助计算解时对话框的文本框
     public Chronometer timer = null;
     private long recordTime = 0;        //用来记录暂停计时的相对时间（秒），恢复计时将从它开始继续计时。
@@ -63,8 +63,10 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
         toolbarTitle.setText(startBoard.name);
         textSteps = (TextView) findViewById(R.id.text_steps);
         timer = findViewById(R.id.layout_timer);
+        textHint = findViewById(R.id.text_hint);
         setTextSteps();
         timerResume();
+        //textHint.setText("这里是提示信息");
         boardView = (SudokuBoardView) findViewById(R.id.board_view);
         boardView.setBoard(startBoard);
         boardView.setOnActionListener(new SudokuBoardView.ActionListener() {
@@ -155,6 +157,7 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
     }
     private void handleClick(SudokuPiece sudokuPiece){
         //有改变才回调给playActivity处理
+        textHint.setText("");
         //1，把该board加入list
         pushBoard(boardView.board.copyBoard());
         //2，检查，提醒
@@ -169,9 +172,10 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
         //保存到数据库中，更新seconds
         (new SudokuTask(SudokuTask.TASK_SAVE_DB)).execute(); //自动保存到数据库
         //type_going，同步删除记录
-        if(dbType == DBBoard.DBBOARD_TYPE_GOING){
+        /*if(dbType == DBBoard.DBBOARD_TYPE_GOING){
             (new SudokuTask(SudokuTask.TASK_DELETE_GOING_DB)).execute();
-        }
+        }*/
+        (new SudokuTask(SudokuTask.TASK_DELETE_GOING_DB)).execute();
         //弹出对话框提示用户
         AlertDialog.Builder builder = new AlertDialog.Builder(PlaySudokuBoardActivity.this);
         builder.setIcon(android.R.drawable.ic_dialog_info);
@@ -235,6 +239,9 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
                 break;
             case R.id.toolbar_hint:
                 findHint();
+                break;
+            case R.id.toolbar_name:
+                changeName();
                 break;
             default:
         }
@@ -398,7 +405,7 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
         showMyDialog("checking");
         (new SudokuTask(SudokuTask.TASK_CHECK_SOLUTION)).execute();
     }
-    private void findHint(){
+    private void findHint() {
         //找提示
         /*List<SudokuPiece> pieceList = ((SudokuBoard)currentBoard()).findHint();
         if (pieceList != null) {
@@ -408,46 +415,180 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
         board.checkMiniNumbers();   // 找提示之前，先检查和bignumber冲突的miniNumnber
         List<SudokuPiece> pieceList = null;
 
-        // 1、找备选数字中是唯一的。
+        // 1.1、找备选数字中是唯一的。
+        // 1.2 找同一系列备选数字唯一的.
         pieceList = board.findUniqueMiniNumber();
-        if(pieceList != null){
-            Log.v("sudoku","找到唯一数字提示");
+        if (pieceList != null) {
+            Log.v("sudoku", "找到唯一数字提示");
             boardView.drawHintPieces(pieceList);
-            Toast.makeText(PlaySudokuBoardActivity.this,"找到备选数字唯一的单元格",Toast.LENGTH_LONG).show();
-            return;
-        }
-        // 2、找同一系列（行，列，宫格等）中多选数字唯一的。
-        pieceList = board.findUniqueMiniNumbers();
-        if(pieceList != null){
-            Log.v("sudoku","找到多选数字提示");
-            boardView.drawHintPieces(pieceList);;
-            Toast.makeText(PlaySudokuBoardActivity.this,"找到备选数字组合唯N的单元格",Toast.LENGTH_LONG).show();
+            boardView.setSelectBigNumber(board.hintMiniNumber);
+            //Toast.makeText(PlaySudokuBoardActivity.this, "找到备选数字唯一的单元格", Toast.LENGTH_LONG).show();
+            textHint.setText("找到备选数字唯一的单元格");
             return;
         }
 
-        //3、找一个宫格中仅有同一行/同一列/同意对角线才有备选数字的情况。（这样可以删除同一行/列/对角线的其他位置的备选数字）
-        for(int n=1; n<=board.getMaxNumber(board.sudokuType); n++){
+        // 2、找同一系列（行，列，宫格等）中多选数字唯一的。
+        pieceList = board.findUniqueMiniNumbers();
+        if (pieceList != null) {
+            Log.v("sudoku", "找到多选数字提示");
+            boardView.drawHintPieces(pieceList);
+            textHint.setText("locked candidates:找到多选组合的单元格");
+            //Toast.makeText(PlaySudokuBoardActivity.this, "找到备选数字组合唯N的单元格", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        //3、找一个宫格中仅有同一行/同一列/同一对角线才有备选数字的情况。（这样可以删除同一行/列/对角线的其他位置的备选数字）
+        for (int n = 1; n <= board.getMaxNumber(board.sudokuType); n++) {
             //宫格中miniNumber仅在同一行出现
             pieceList = board.findMiniInLineOfSquare(n);
-            if(pieceList != null && pieceList.size() > 0){
+            if (pieceList != null && pieceList.size() > 0) {
                 boardView.drawHintPieces(pieceList);
-                Toast.makeText(PlaySudokuBoardActivity.this,String.format("找到宫格中仅在同一行存在备选数字:%d",n),Toast.LENGTH_LONG).show();
+                //Toast.makeText(PlaySudokuBoardActivity.this, String.format("找到宫格中仅在同一行存在备选数字:%d", n), Toast.LENGTH_LONG).show();
+                textHint.setText(String.format("宫格中仅在同一行存在备选数字:%d", n));
+                boardView.setSelectMiniNumber(n);
                 return;
             }
             //宫格中miniNumber仅在同一列出现
             pieceList = board.findMiniInColumnOfSquare(n);
-            if(pieceList != null && pieceList.size() > 0){
+            if (pieceList != null && pieceList.size() > 0) {
                 boardView.drawHintPieces(pieceList);
-                Toast.makeText(PlaySudokuBoardActivity.this,String.format("找到宫格中仅在同一列存在备选数字:%d",n),Toast.LENGTH_LONG).show();
+                //Toast.makeText(PlaySudokuBoardActivity.this, String.format("找到宫格中仅在同一列存在备选数字:%d", n), Toast.LENGTH_LONG).show();
+                textHint.setText(String.format("宫格中仅在同一列存在备选数字:%d", n));
+                boardView.setSelectMiniNumber(n);
                 return;
             }
             //宫格中miniNumber仅在对角线出现
             pieceList = board.findMiniInDiagnoalOfSquare(n);
-            if(pieceList != null && pieceList.size() > 0){
+            if (pieceList != null && pieceList.size() > 0) {
                 boardView.drawHintPieces(pieceList);
-                Toast.makeText(PlaySudokuBoardActivity.this,String.format("找到宫格中仅在同一对角线存在备选数字:%d",n),Toast.LENGTH_LONG).show();
+                //Toast.makeText(PlaySudokuBoardActivity.this, String.format("找到宫格中仅在同一对角线存在备选数字:%d", n), Toast.LENGTH_LONG).show();
+                textHint.setText(String.format("宫格中仅在同一对角线存在备选数字:%d", n));
+                boardView.setSelectMiniNumber(n);
                 return;
             }
+        }
+
+        //4、找同一行/同一列/同一对角线仅在一个宫格中才有备选数字的情况。（这样可以删除宫格的其他位置的备选数字）
+        for (int n = 1; n <= board.getMaxNumber(board.sudokuType); n++) {
+            //同一行
+            pieceList = board.findMiniInSquareOfLine(n);
+            if (pieceList != null && pieceList.size() > 0) {
+                boardView.drawHintPieces(pieceList);
+                //Toast.makeText(PlaySudokuBoardActivity.this, String.format("找到同一行仅在一宫格中存在备选数字:%d", n), Toast.LENGTH_LONG).show();
+                textHint.setText(String.format("一行仅在同一宫格中存在备选数字:%d", n));
+                boardView.setSelectMiniNumber(n);
+                return;
+            }
+            //同一列
+            pieceList = board.findMiniInSquareOfColumn(n);
+            if (pieceList != null && pieceList.size() > 0) {
+                boardView.drawHintPieces(pieceList);
+                //Toast.makeText(PlaySudokuBoardActivity.this, String.format("找到同一列仅在一宫格中存在备选数字:%d", n), Toast.LENGTH_LONG).show();
+                textHint.setText(String.format("一列仅在同一宫格中存在备选数字:%d", n));
+                boardView.setSelectMiniNumber(n);
+                return;
+            }
+            //同一对角线
+            pieceList = board.findMiniInSquareOfDiagonal(n);
+            if (pieceList != null && pieceList.size() > 0) {
+                boardView.drawHintPieces(pieceList);
+                //Toast.makeText(PlaySudokuBoardActivity.this, String.format("找到同一对角线仅在一宫格中存在备选数字:%d", n), Toast.LENGTH_LONG).show();
+                textHint.setText(String.format("对角线仅在同一宫格中存在备选数字:%d", n));
+                boardView.setSelectMiniNumber(n);
+                return;
+            }
+        }
+
+        //5 找fish
+        for(int n=1; n<board.getMaxNumber(board.sudokuType); n++){
+            pieceList = board.findFish(n);
+            if (pieceList != null && pieceList.size() > 0) {
+                boardView.drawHintPieces(pieceList);
+                Log.v("debug","找到fish:"+String.valueOf(n));
+                //Toast.makeText(PlaySudokuBoardActivity.this, String.format("找到fish:%d", n), Toast.LENGTH_LONG).show();
+                textHint.setText(String.format("fish:备选数字%d", n));
+                boardView.setSelectMiniNumber(n);
+                return;
+            }
+        }
+
+        //5、找finned-X-Wing
+        for (int n = 1; n <= board.getMaxNumber(board.sudokuType); n++) {
+            pieceList = board.findFinnedXWing(n);
+            if (pieceList != null && pieceList.size() > 0) {
+                boardView.drawHintPieces(pieceList);
+                boardView.setSelectMiniNumber(n);
+                //Toast.makeText(PlaySudokuBoardActivity.this, String.format("找到finned-X-Wing:%d", n), Toast.LENGTH_LONG).show();
+                textHint.setText(String.format("finned-fish:备选数字%d", n));
+                return;
+            }
+        }
+
+        //6、找xy-wing
+        pieceList = board.findW_Wing();
+        if (pieceList != null && pieceList.size() != 0) {
+            boardView.drawHintPieces(pieceList);
+            boardView.setSelectMiniNumber(board.hintMiniNumber);
+            //Toast.makeText(PlaySudokuBoardActivity.this, String.format("找到W-Wing:"), Toast.LENGTH_LONG).show();
+            textHint.setText(String.format("W-Wing:红色框中piece组成W-Wing,那么可以删除piece交叉的%d备选数字",board.hintMiniNumber));
+            return;
+        }
+        //7 找XYWing
+        pieceList = board.findXYWing();
+        if (pieceList != null && pieceList.size() != 0) {
+            boardView.drawHintPieces(pieceList);
+            boardView.setSelectMiniNumber(board.hintMiniNumber);
+            //Toast.makeText(PlaySudokuBoardActivity.this, String.format("找到XYWing"), Toast.LENGTH_LONG).show();
+            textHint.setText(String.format("XY-Wing:红色框中piece组成XY-Wing,那么可以删除piece交叉的%d备选数字",board.hintMiniNumber));
+            return;
+        }
+        //8 找XYZWing
+        pieceList = board.findXYZWing();
+        if (pieceList != null && pieceList.size() != 0) {
+            boardView.drawHintPieces(pieceList);
+            boardView.setSelectMiniNumber(board.hintMiniNumber);
+            //Toast.makeText(PlaySudokuBoardActivity.this, String.format("找到XYZWing"), Toast.LENGTH_LONG).show();
+            textHint.setText(String.format("XYZ-Wing:红色框中piece组成XYZ-Wing,那么可以删除piece交叉的%d备选数字",board.hintMiniNumber));
+            return;
+        }
+
+        //寻找wxyz-wing
+        pieceList = board.findWXYZWing();
+        if (pieceList != null && pieceList.size() != 0) {
+            boardView.drawHintPieces(pieceList);
+            boardView.setSelectMiniNumber(board.hintMiniNumber);
+            //Toast.makeText(PlaySudokuBoardActivity.this, String.format("找到XYZWing"), Toast.LENGTH_LONG).show();
+            textHint.setText(String.format("WXYZ-Wing:红色框中piece组成WXYZ-Wing,那么可以删除piece交叉的%d备选数字",board.hintMiniNumber));
+            return;
+        }
+        //9,chain
+        for (int n = 1; n < board.getMaxNumber(board.sudokuType); n++) {
+            pieceList = board.findChainPieces(n);
+            if (pieceList != null && pieceList.size() != 0) {
+                boardView.drawChainList(board.chainList,board.startFlag,board.hintMiniNumber);
+                Log.v("debug",String.format("开始标志:%d",board.startFlag));
+                //String start = String.format("%d,%d",board.chainList.get(0).x,board.chainList.get(0).y);
+                //String end = String.format("%d,%d",board.chainList.get(board.chainList.size()-1).x,board.chainList.get(board.chainList.size()-1).y);
+                //Toast.makeText(PlaySudokuBoardActivity.this, String.format("找到链表%d",board.hintMiniNumber), Toast.LENGTH_LONG).show();
+                textHint.setText(String.format("Chain:备选数字%d的piece组成链表",board.hintMiniNumber));
+                //debug
+                Log.v("debug",String.format("ChainList:%d",board.hintMiniNumber));
+                List<SudokuPiece> pieceList2 = board.chainList;
+                for(int i=0; i<pieceList2.size(); i++){
+                    Log.v("debug","  "+pieceList2.get(i).toDBString());
+                }
+                //board.printChainNet();
+                return;
+            }
+        }
+        //10 找xy chain
+        if (board.findXYChain()) {
+            //boardView.drawChainList(board.chainList,SudokuBoard.CHAIN_WEAK_ALWAYS,board.hintMiniNumber);
+            boardView.drawChainList(board.bestChainList,SudokuBoard.CHAIN_WEAK_ALWAYS,board.bestChainX);
+            Log.v("debug",String.format("miniNumber=%d,chain:%s",board.bestChainX,board.pieceListToString(board.bestChainList)));
+            //Toast.makeText(PlaySudokuBoardActivity.this, String.format("找到XY-chain:"), Toast.LENGTH_LONG).show();
+            textHint.setText(String.format("XY-Chain:红色框中piece组成XY-Chain,那么可以起点和终点piece交叉的%d备选数字",board.bestChainX));
+            return;
         }
         Log.v("sudoku","没找到提示");
         Toast.makeText(PlaySudokuBoardActivity.this,"没找到可用提示",Toast.LENGTH_LONG).show();
@@ -476,6 +617,39 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
         //暂存
         Log.v("sudoku","暂存goingDB");
         (new SudokuTask(SudokuTask.TASK_SAVE_GOING_DB)).execute();
+    }
+    private void changeName(){
+        LayoutInflater factory = LayoutInflater.from(PlaySudokuBoardActivity.this);
+        final View textEntryView = factory.inflate(R.layout.dialog_sudoku_change_name, null);
+        final EditText nameText = (EditText) textEntryView.findViewById(R.id.editText_name);
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(PlaySudokuBoardActivity.this);
+        builder.setView(textEntryView);
+        builder.setTitle("修改名字");
+        nameText.setText(startBoard.name);
+        //TODO
+        builder.setPositiveButton("确定", new DialogInterface.OnClickListener() {
+            public void onClick(DialogInterface dialog, int i) {
+                startBoard.name = nameText.getText().toString();
+                boardView.board.name = startBoard.name;
+                //boardlist
+                for(int j=0; j<boardList.size(); j++){
+                    boardList.get(j).name = startBoard.name;
+                }
+                toolbarTitle.setText(startBoard.name);
+                (new SudokuTask(SudokuTask.TASK_SAVE_DB)).execute();
+                dialog.dismiss();
+            }
+        });
+        builder.setNegativeButton("取消", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                dialog.dismiss();
+                finish();
+            }
+        });
+        AlertDialog dialog = builder.create();
+        dialog.show();
     }
 
     private void timerStart(){
@@ -526,6 +700,7 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
         public final static int TASK_CHECK_AND_SAVE = 3;
         public final static int TASK_SAVE_GOING_DB = 4;
         public final static int TASK_DELETE_GOING_DB = 5;
+        public final static int TASK_CHANGE_NAME = 6;
 
         private int taskID = TASK_SAVE_DB;
         private String reply = null;
@@ -541,6 +716,10 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
                 case TASK_SAVE_DB:
                     //保存DB，仅保存modifiable=piece的棋子
                     startBoard.seconds = getTimer();
+                    reply = startBoard.toInitialBoard().toDBBoard().save();
+                    return reply;
+                case TASK_CHANGE_NAME:
+                    //改名不要更新seconds
                     reply = startBoard.toInitialBoard().toDBBoard().save();
                     return reply;
                 case TASK_CHECK_SOLUTION:
@@ -562,7 +741,8 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
                     reply = ((SudokuBoard)currentBoard()).toGoingDBBoard().save();
                     return reply;
                 case TASK_DELETE_GOING_DB:
-
+                    reply = ((SudokuBoard)currentBoard()).toGoingDBBoard().deleteGoingBoard();
+                    return reply;
             }
             return null;
         }
@@ -572,6 +752,7 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
             String message = "";
             switch (taskID) {
                 case TASK_SAVE_DB:
+                case TASK_CHANGE_NAME:
                     //todo
                     Toast.makeText(PlaySudokuBoardActivity.this,reply,Toast.LENGTH_SHORT);
                     break;
@@ -614,6 +795,5 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
                     return;
             }
         }
-
     }
 }

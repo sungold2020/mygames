@@ -49,13 +49,26 @@ public class SudokuFindSolution{
                     continue;
                 }
                 full = false;
-                for(int i=1; i<=maxNumber; i++) {   //尝试每一个数字的可能性
-                    if(board.numberExist(board.pieces[x][y],i)){ //数字已经存在冲突
-                        continue;
+                //miniNumbers如果为空，就尝试每一个数字
+                if(board.pieces[x][y].getMiniNumbers() == null) {
+                    for (int i = 1; i <= maxNumber; i++) {   //尝试每一个数字的可能性
+                        if (board.numberExist(board.pieces[x][y], i)) { //数字已经存在冲突
+                            continue;
+                        }
+                        board.pieces[x][y].setNumber(i);
+                        nextPiece(board.pieces[x][y]); //从下一个数开始递归
+                        board.pieces[x][y].setNumber(0); //回退
                     }
-                    board.pieces[x][y].setNumber(i);
-                    nextPiece(board.pieces[x][y]); //从下一个数开始递归
-                    board.pieces[x][y].setNumber(0); //回退
+                }else { //否则就仅尝试miniNumbers中的数字
+                    for (int i = 0; i < board.pieces[x][y].getMiniNumbers().length; i++) {
+                        int number = board.pieces[x][y].getMiniNumbers()[i];
+                        if (board.numberExist(board.pieces[x][y], number)) { //数字已经存在冲突
+                            continue;
+                        }
+                        board.pieces[x][y].setNumber(number);
+                        nextPiece(board.pieces[x][y]); //从下一个数开始递归
+                        board.pieces[x][y].setNumber(0); //回退
+                    }
                 }
                 return;
             }
