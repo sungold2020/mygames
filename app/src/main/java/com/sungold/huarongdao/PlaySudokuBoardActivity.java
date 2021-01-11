@@ -432,6 +432,7 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
         if (pieceList != null) {
             Log.v("sudoku", "找到多选数字提示");
             boardView.drawHintPieces(pieceList);
+            boardView.setSelectMiniNumber(board.hintMiniNumber);
             textHint.setText("locked candidates:找到多选组合的单元格");
             //Toast.makeText(PlaySudokuBoardActivity.this, "找到备选数字组合唯N的单元格", Toast.LENGTH_LONG).show();
             return;
@@ -467,7 +468,6 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
                 return;
             }
         }
-
         //4、找同一行/同一列/同一对角线仅在一个宫格中才有备选数字的情况。（这样可以删除宫格的其他位置的备选数字）
         for (int n = 1; n <= board.getMaxNumber(board.sudokuType); n++) {
             //同一行
@@ -514,7 +514,7 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
 
         //5、找finned-X-Wing
         for (int n = 1; n <= board.getMaxNumber(board.sudokuType); n++) {
-            pieceList = board.findFinnedXWing(n);
+            pieceList = board.findFinnedFish(n);
             if (pieceList != null && pieceList.size() > 0) {
                 boardView.drawHintPieces(pieceList);
                 boardView.setSelectMiniNumber(n);
@@ -524,8 +524,17 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
             }
         }
 
-        //6、找xy-wing
+        //6、找w-wing
         pieceList = board.findW_Wing();
+        if (pieceList != null && pieceList.size() != 0) {
+            boardView.drawHintPieces(pieceList);
+            boardView.setSelectMiniNumber(board.hintMiniNumber);
+            //Toast.makeText(PlaySudokuBoardActivity.this, String.format("找到W-Wing:"), Toast.LENGTH_LONG).show();
+            textHint.setText(String.format("W-Wing:红色框中piece组成W-Wing,那么可以删除piece交叉的%d备选数字",board.hintMiniNumber));
+            return;
+        }
+        //找HiddenUR
+        pieceList = board.findHiddenUniqueRectangle();
         if (pieceList != null && pieceList.size() != 0) {
             boardView.drawHintPieces(pieceList);
             boardView.setSelectMiniNumber(board.hintMiniNumber);
@@ -562,24 +571,11 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
             return;
         }
         //9,chain
-        for (int n = 1; n < board.getMaxNumber(board.sudokuType); n++) {
-            pieceList = board.findChainPieces(n);
-            if (pieceList != null && pieceList.size() != 0) {
-                boardView.drawChainList(board.chainList,board.startFlag,board.hintMiniNumber);
-                Log.v("debug",String.format("开始标志:%d",board.startFlag));
-                //String start = String.format("%d,%d",board.chainList.get(0).x,board.chainList.get(0).y);
-                //String end = String.format("%d,%d",board.chainList.get(board.chainList.size()-1).x,board.chainList.get(board.chainList.size()-1).y);
-                //Toast.makeText(PlaySudokuBoardActivity.this, String.format("找到链表%d",board.hintMiniNumber), Toast.LENGTH_LONG).show();
-                textHint.setText(String.format("Chain:备选数字%d的piece组成链表",board.hintMiniNumber));
-                //debug
-                Log.v("debug",String.format("ChainList:%d",board.hintMiniNumber));
-                List<SudokuPiece> pieceList2 = board.chainList;
-                for(int i=0; i<pieceList2.size(); i++){
-                    Log.v("debug","  "+pieceList2.get(i).toDBString());
-                }
-                //board.printChainNet();
-                return;
-            }
+
+        if(board.findChainPieces()){
+            boardView.drawChainList(board.bestChainList,board.bestStartFlag,board.bestChainX);
+            textHint.setText(String.format("Chain:备选数字%d的piece组成链表",board.bestChainX));
+            return;
         }
         //10 找xy chain
         if (board.findXYChain()) {
@@ -590,6 +586,7 @@ public class PlaySudokuBoardActivity extends AppCompatActivity {
             textHint.setText(String.format("XY-Chain:红色框中piece组成XY-Chain,那么可以起点和终点piece交叉的%d备选数字",board.bestChainX));
             return;
         }
+
         Log.v("sudoku","没找到提示");
         Toast.makeText(PlaySudokuBoardActivity.this,"没找到可用提示",Toast.LENGTH_LONG).show();
     }

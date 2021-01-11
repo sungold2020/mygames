@@ -24,7 +24,7 @@ public class SudokuBoard extends Board{
     ChainNode[][] chainNet;     //查找链表时暂存用
     List<SudokuPiece> chainList = null;
     List<SudokuPiece> bestChainList = null;  //存储链路最短的提示链表
-    int bestChainX ;                        //储存最短链路时的X
+    int bestChainX,bestStartFlag;    //储存最短链路时的X
     int startFlag;
     int hintMiniNumber;  //用于存储提示的备选数字,在xy链表中提示起始x
 
@@ -1050,14 +1050,19 @@ public class SudokuBoard extends Board{
             //百分比对角线
             for (int i=0; i<3; i++) {
                 List<SudokuPiece> pieceList = getSquare(i * 3, i * 3);
-                if (!isOtherPlaceHaveMiniExcludePercentDiagnoal(pieceList, miniNumber)) {
+                Log.v("debug",String.format("miniNumber=%d,No%d square",miniNumber,i));
+                Log.v("debug",pieceListToString(pieceList));
+                if (!numberExistInList(pieceList,miniNumber) && !isOtherPlaceHaveMiniExcludePercentDiagnoal(pieceList, miniNumber)) {
                     outPieceList = getPiecesByPercentDiagnoal(pieceList,miniNumber);
+                    Log.v("debug","找到对角线才有备选数字:"+pieceListToString(outPieceList));
                     //检查除了outPieceList中的piece以外，该对角线其他位置是否包含备选数字
                     for (int j = 0; j < 9; j++) {
                         if (pieces[j][j].getNumber() > 0 || isInPieceList(outPieceList, pieces[j][j])) {
                             continue;
                         }
                         if (pieces[j][j].haveMiniNumber(miniNumber)) {
+                            //除了该宫格以外,其他对方也有棋子
+                            Log.v("deug","其他地方也有备选数字:"+pieces[j][j].toDBString());
                             return outPieceList;
                         }
                     }
@@ -1300,21 +1305,96 @@ public class SudokuBoard extends Board{
         }
         return null;
     }
-    //N * N N行/列唯N
-    public List<SudokuPiece> findXWing(int miniNumber){
-        //N行在同一N列位置备选数字唯一
-        //   2    2
-        //   2    2
-        int maxX = getMaxX(sudokuType);
-        int maxY = getMaxY(sudokuType);
-        for(int n=2; n<maxY; n++){
-            //TODO
+    public List<SudokuPiece> findFish(int miniNumber){
+        //N*N的fish
+
+        for(int n=2;n<getMaxNumber(sudokuType)-1;n++){
+            //0-maxNumber-1中n的组合
+            List<Numbers> numbersList = Numbers.findAllCombinationFrom0(getMaxNumber(sudokuType)-1,n);
+            //Log.v("debug",String.format("n=%d",n));
+            for(int i=0; i<numbersList.size(); i++){
+                Numbers numbers = numbersList.get(i);
+                //Log.v("debug",String.format("   numbers:%s",numbers.toString()));
+                //找出n列，备选数字仅出现在y=numbers行中
+                Numbers numbersOfColumn = new Numbers(); //符合ya要求的列
+                for(int x=0; x<getMaxX(sudokuType); x++){
+                    Boolean otherPlaceHaveMini = false; //x列其他地方是否包含备选数字
+                    Boolean haveMini = false; //该列是否包含备选数字
+                    for(int y=0; y<getMaxY(sudokuType); y++){
+                        if(pieces[x][y].getNumber() > 0 || !pieces[x][y].haveMiniNumber(miniNumber)){
+                            continue;
+                        }
+                        if(!numbers.include(y)){ //y位置不在numbers的行中
+                            otherPlaceHaveMini = true;
+                            break;
+                        }else{
+                            haveMini = true;
+                        }
+                    }
+                    if(otherPlaceHaveMini == false && haveMini){
+                        numbersOfColumn.addNumber(x);
+                    }
+                }
+                if(numbersOfColumn.count() != n){
+                    continue;
+                }
+                //有n列满足要求，还要看看y=numbers[n]行，除了column[n]列以外，是否还有其他地方出现（可以删除）
+                for(int j=0; j<numbers.count(); j++){
+                    int y = numbers.getNumbers().get(j);
+                    for(int x=0; x<getMaxX(sudokuType); x++){
+                        if(pieces[x][y].getNumber() > 0 || !pieces[x][y].haveMiniNumber(miniNumber)){
+                            continue;
+                        }
+                        if(!numbersOfColumn.include(x)){
+                            //找到了其他地方还出现备选数字
+                            Log.v("debug",String.format("Line:%s,column:%s",numbers,numbersOfColumn));
+                            return getPiecesByLineAndColumn(numbers,numbersOfColumn);
+                        }
+                    }
+                }
+
+                //找出n行，备选数字仅出现在x=numbers列中
+                Numbers numbersOfLine = new Numbers(); //符合要求的行
+                for(int y=0; y<getMaxY(sudokuType); y++){
+                    Boolean otherPlaceHaveMini = false; //y行其他地方是否包含备选数字
+                    Boolean haveMini = false; //该行是否包含备选数字
+                    for(int x=0; x<getMaxX(sudokuType); x++){
+                        if(pieces[x][y].getNumber() > 0 || !pieces[x][y].haveMiniNumber(miniNumber)){
+                            continue;
+                        }
+                        if(!numbers.include(x)){ //x位置不在numbers的列中
+                            otherPlaceHaveMini = true;
+                            break;
+                        }else{
+                            haveMini = true;
+                        }
+                    }
+                    if(otherPlaceHaveMini == false && haveMini){
+                        numbersOfLine.addNumber(y);
+                    }
+                }
+                if(numbersOfLine.count() != n){
+                    continue;
+                }
+                //有n行满足要求，还要看看x=numbers[n]列，除了numbersOfLine[n]行以外，是否还有其他地方出现（可以删除）
+                for(int j=0; j<numbers.count(); j++){
+                    int x = numbers.getNumbers().get(j);
+                    for(int y=0; y<getMaxY(sudokuType); y++){
+                        if(pieces[x][y].getNumber() > 0 || !pieces[x][y].haveMiniNumber(miniNumber)){
+                            continue;
+                        }
+                        if(!numbersOfLine.include(y)){
+                            //找到了其他地方还出现备选数字
+                            Log.v("debug",String.format("return Line:%s,column:%s",numbersOfLine,numbers));
+                            return getPiecesByLineAndColumn(numbersOfLine,numbers);
+                        }
+                    }
+                }
+            }
         }
-        //N列在同一N行位置备选数字唯一。
-        //TODO
-        return null;
+        return  null;
     }
-    public List<SudokuPiece> findFinnedXWing(int miniNumber){
+    public List<SudokuPiece> findFinnedFish(int miniNumber){
         //111   xxx  1C
         //  1
         //  1A  xxx 1B
@@ -1650,6 +1730,7 @@ public class SudokuBoard extends Board{
                         if(outPieceList != null && outPieceList.size() != 0){
                             outPieceList.add(pieces[x][y]);
                             outPieceList.add(pieces[x2][y2]);
+                            hintMiniNumber = miniNumberX;
                             return outPieceList;
                         }
                     }else if(haveY && !haveX){
@@ -1659,6 +1740,7 @@ public class SudokuBoard extends Board{
                         if(outPieceList != null && outPieceList.size() != 0){
                             outPieceList.add(pieces[x][y]);
                             outPieceList.add(pieces[x2][y2]);
+                            hintMiniNumber = miniNumberY;
                             return outPieceList;
                         }
                     }
@@ -1667,34 +1749,68 @@ public class SudokuBoard extends Board{
         }
         return null;
     }
-    public List<SudokuPiece> findChainPieces(int miniNumber){
-        //找链表的应用。
-        int maxX = getMaxX(sudokuType);
-        int maxY = getMaxY(sudokuType);
-        //1、建立链关系网
-        chainNet = createChainNet(miniNumber);
-        hintMiniNumber = miniNumber;
-        //2、进行寻找链
-        for(int x=0; x<maxX; x++){
-            for(int y=0; y<maxY; y++){
-                if(pieces[x][y].getNumber() > 0 || !pieces[x][y].haveMiniNumber(miniNumber)){
-                    continue;
-                }
-                chainList = new ArrayList<>();
-                startFlag = CHAIN_STRONG_ALTERNATE;
-                if(searchNextChainNode(pieces[x][y], CHAIN_STRONG_ALTERNATE)){
-                    return chainList;
-                }
-                chainList = new ArrayList<>();
-                startFlag = CHAIN_WEAK_ALTERNATE;
-                if(searchNextChainNode(pieces[x][y], CHAIN_WEAK_ALTERNATE)){
-                    return chainList;
+    public List<SudokuPiece> findHiddenUniqueRectangle(){
+        //    A:XY*   =x=      B:X*
+        //     ||Xx               |
+        //    C:X*   -x-      D:XY
+        //  x: A==B,A==C,D=--B,D--C，可以删除D点的Y
+        //  假设D是X, 那么D已经不是Y了
+        //  假设B是X，那么A就是Y，C是X，如果D也是Y，构成dead pattern，所以D不能是Y
+        // 所以无论如何D不能是Y
+
+        //1、先找D点,特征是:(某miniNumber，在行，列，对角线上仅有一个强链点）
+        for(int x=0; x<getMaxX(sudokuType); x++){
+            for(int y=0; y<getMaxY(sudokuType); y++){
+                SudokuPiece pieceA = pieces[x][y];
+                for(int miniX = 1; miniX <=getMaxNumber(sudokuType); miniX++) {
+                    List<SudokuPiece> strongList = getStrongChainPieces(pieceA, miniX);
+                    if(strongList == null || strongList.size() < 2){
+                        continue;
+                    }
+                    //随机选择两个piece
+                    List<Numbers> numbersList = Numbers.findAllCombinationFrom0(strongList.size()-1,2);
+                    for(int i=0; i<numbersList.size(); i++) {
+                        Numbers numbers = numbersList.get(i);
+                        SudokuPiece pieceB = strongList.get(numbers.getNumbers().get(0));
+                        SudokuPiece pieceC = strongList.get(numbers.getNumbers().get(1));
+                        //获取D
+                        List<SudokuPiece> pieceDList = getWeakChainPieces(pieceB,pieceC, miniX);
+                        if(pieceDList == null){
+                            continue;
+                        }
+                        for(int j=0; j<pieceDList.size(); j++){
+                            SudokuPiece pieceD = pieceDList.get(j);
+                            //排除掉A
+                            if(pieceD.x == pieceA.x || pieceD.y == pieceA.y){
+                                continue;
+                            }
+                            if(pieceD.getMiniNumbers().length != 2){
+                                continue;
+                            }
+                            //获取Y
+                            int miniY;
+                            if(pieceD.getMiniNumbers()[0] == miniX){
+                                miniY = pieceD.getMiniNumbers()[1];
+                            }else{
+                                miniY = pieceD.getMiniNumbers()[0];
+                            }
+                            if(pieceA.haveMiniNumber(miniY)){
+                                List<SudokuPiece> outPieceList = new ArrayList<>();
+                                outPieceList.add(pieceA);
+                                outPieceList.add(pieceB);
+                                outPieceList.add(pieceC);
+                                outPieceList.add(pieceD);
+                                hintMiniNumber = miniY;
+                                return outPieceList;
+                            }
+                        }
+                    }
                 }
             }
         }
         return null;
     }
-    public List<SudokuPiece> findXYWing()    {
+    public List<SudokuPiece> findXYWing() {
         //找A:xy-y-B:yz-z-C:xz，如：
         // A:xy       B:yz
         //  xx        C:xz
@@ -1767,99 +1883,6 @@ public class SudokuBoard extends Board{
             }
         }
         return null;
-    }
-    public Boolean findXYChain()    {
-        //寻找xy_chain (xy)--(yz)--(zw)--(wx),那么删除起点和终点的x -weaklist
-        //找到就返回true,结果存储在chainList,否则返回false
-
-        bestChainList = null;
-        for(int x1=0; x1<getMaxX(sudokuType); x1++){
-            for(int y1=0; y1<getMaxY(sudokuType); y1++){
-                //找起点：xy
-                if(pieces[x1][y1].getNumber() > 0 || pieces[x1][y1].getMiniNumbers().length != 2){
-                    continue;
-                }
-                SudokuPiece startPiece = pieces[x1][y1];
-
-                for(int i=0; i<2; i++){
-                    int X,Y;
-                    chainList = new ArrayList<>();
-                    if(i==0){
-                        X = startPiece.getMiniNumbers()[0];
-                        Y = startPiece.getMiniNumbers()[1];
-                    }else{
-                        X = startPiece.getMiniNumbers()[1];
-                        Y = startPiece.getMiniNumbers()[0];
-                    }
-                    chainList.add(startPiece);
-                    hintMiniNumber = X;
-                    Log.v("debug",String.format("start search xy-chain(X=%d) A:",X,startPiece.toDBString()));
-                    //递归寻找xy-chain
-                    /*if(searchNextXYChainNode(startPiece,Y)){
-                        return true;
-                    }*/
-                    searchNextXYChainNode(startPiece,Y);
-                }
-            }
-        }
-        if(bestChainList != null){
-            return true;
-        }
-        return false;
-    }
-    private Boolean searchNextXYChainNode(SudokuPiece currentPiece,int currentMiniNumber){
-        //currentPiece for example: xy,
-        //currentMiniNumber for example: y
-        List<SudokuPiece> weakList = getWeakChainPieces(currentPiece,currentMiniNumber);
-        if(weakList == null){ return false; }
-        //找nextPiece
-        for(int j=0; j<weakList.size(); j++) {
-            SudokuPiece nextPiece = weakList.get(j);
-            //必须仅含两个备选数字
-            if (nextPiece.getNumber() > 0 || nextPiece.getMiniNumbers().length != 2) {
-                continue;
-            }
-            // 排除掉chainList中重复的piece
-            if(isInPieceList(chainList,nextPiece)){
-                continue;
-            }
-            //push
-            chainList.add(nextPiece);
-            //获取下一个miniNumber,非currentMiniNumber
-            int nextMiniNumber;
-            if (nextPiece.getMiniNumbers()[0] == currentMiniNumber) {
-                nextMiniNumber = nextPiece.getMiniNumbers()[1];
-            } else {
-                nextMiniNumber = nextPiece.getMiniNumbers()[0];
-            }
-            //如果nextMiniNumber等于ChainMiniNumber,那么获取起点和终点交叉的weakList
-            if (nextMiniNumber == hintMiniNumber) {
-                List<SudokuPiece> outPieceList = getWeakChainPieces(chainList.get(0),nextPiece, hintMiniNumber);
-                if(outPieceList != null && outPieceList.size() > 0){
-                    Log.v("debug","to delete :"+pieceListToString(outPieceList));
-                    //return true;
-                    if(bestChainList == null){
-                        bestChainList = copyPieceList(chainList);
-                        bestChainX = hintMiniNumber;
-                    }else{
-                        if(bestChainList.size() > chainList.size()){
-                            bestChainList = copyPieceList(chainList);
-                            bestChainX = hintMiniNumber;
-                        }
-                    }
-                }
-                //否则就回退
-                chainList.remove(chainList.size()-1);
-                return false;
-            }
-            //继续搜索下一个节点
-            if(searchNextXYChainNode(nextPiece,nextMiniNumber)){
-              return true;
-            }
-            //pop
-            chainList.remove(chainList.size()-1);
-        }
-        return false;
     }
     public List<SudokuPiece> findXYZWing(){
         //找XYZWing 如：
@@ -1993,11 +2016,13 @@ public class SudokuBoard extends Board{
                         continue;
                     }
                     //随机选择3个节点
-                    List<Integer> intList = new ArrayList<>();
+                    /*List<Integer> intList = new ArrayList<>();
                     for(int j=0; j<wxyzPieceList.size(); j++){
                         intList.add(j);
                     }
-                    List<Numbers> numbersList = Numbers.findAllCombination(intList,3);
+                    List<Numbers> numbersList = Numbers.findAllCombination(intList,3);*/
+                    List<Numbers> numbersList = Numbers.findAllCombinationFrom0(wxyzPieceList.size()-1,3);
+
                     for(int j=0; j<numbersList.size(); j++){
                         //numbers的3个数字代表wxyzPieceList链表的序号
                         Numbers numbers = numbersList.get(i);
@@ -2031,98 +2056,280 @@ public class SudokuBoard extends Board{
         }
         return null;
     }
-    public List<SudokuPiece> findFish(int miniNumber){
-        //N*N的fish
-
-        for(int n=2;n<getMaxNumber(sudokuType)-1;n++){
-            //1-maxNumbe中n的组合
-            List<Integer> intList = new ArrayList<>();
-            for(int i=0; i<getMaxNumber(sudokuType); i++){
-                intList.add(i);
+    public Boolean findChainPieces(){
+        //找链路最短的链
+        bestChainList = null;
+        for(int n=0; n<getMaxNumber(sudokuType); n++){
+            findChainPieces(n);
+        }
+        if(bestChainList != null && bestChainList.size() > 0){
+            return true;
+        }
+        return false;
+    }
+    public List<SudokuPiece> findChainPieces(int miniNumber){
+        //遍历寻找可应用的链,发现更多的链路存储在bestChainList。
+        int maxX = getMaxX(sudokuType);
+        int maxY = getMaxY(sudokuType);
+        //1、建立链关系网
+        chainNet = createChainNet(miniNumber);
+        hintMiniNumber = miniNumber;
+        printChainNet();
+        //2、遍历搜索链
+        for(int x=0; x<maxX; x++){
+            for(int y=0; y<maxY; y++){
+                if(pieces[x][y].getNumber() > 0 || !pieces[x][y].haveMiniNumber(miniNumber)){
+                    continue;
+                }
+                //搜索:从强链开始
+                chainList = new ArrayList<>();
+                startFlag = CHAIN_STRONG_ALTERNATE;
+                /*if(searchNextChainNode(pieces[x][y], CHAIN_STRONG_ALTERNATE)){
+                    return chainList;
+                }*/
+                searchNextChainNode(pieces[x][y], CHAIN_STRONG_ALTERNATE);
+                //搜索,从弱链开始
+                chainList = new ArrayList<>();
+                startFlag = CHAIN_WEAK_ALTERNATE;
+                /*if(searchNextChainNode(pieces[x][y], CHAIN_WEAK_ALTERNATE)){
+                    return chainList;
+                }*/
+                searchNextChainNode(pieces[x][y], CHAIN_WEAK_ALTERNATE);
             }
-            List<Numbers> numbersList = Numbers.findAllCombination(intList,n);
-            //Log.v("debug",String.format("n=%d",n));
-            for(int i=0; i<numbersList.size(); i++){
-                Numbers numbers = numbersList.get(i);
-                //Log.v("debug",String.format("   numbers:%s",numbers.toString()));
-                //找出n列，备选数字仅出现在y=numbers行中
-                Numbers numbersOfColumn = new Numbers(); //符合ya要求的列
-                for(int x=0; x<getMaxX(sudokuType); x++){
-                    Boolean otherPlaceHaveMini = false; //x列其他地方是否包含备选数字
-                    Boolean haveMini = false; //该列是否包含备选数字
-                    for(int y=0; y<getMaxY(sudokuType); y++){
-                        if(pieces[x][y].getNumber() > 0 || !pieces[x][y].haveMiniNumber(miniNumber)){
-                            continue;
-                        }
-                        if(!numbers.include(y)){ //y位置不在numbers的行中
-                            otherPlaceHaveMini = true;
-                            break;
-                        }else{
-                            haveMini = true;
-                        }
-                    }
-                    if(otherPlaceHaveMini == false && haveMini){
-                        numbersOfColumn.addNumber(x);
-                    }
-                }
-                if(numbersOfColumn.count() != n){
-                    continue;
-                }
-                //有n列满足要求，还要看看y=numbers[n]行，除了column[n]列以外，是否还有其他地方出现（可以删除）
-                for(int j=0; j<numbers.count(); j++){
-                    int y = numbers.getNumbers().get(j);
-                    for(int x=0; x<getMaxX(sudokuType); x++){
-                        if(pieces[x][y].getNumber() > 0 || !pieces[x][y].haveMiniNumber(miniNumber)){
-                            continue;
-                        }
-                        if(!numbersOfColumn.include(x)){
-                            //找到了其他地方还出现备选数字
-                            Log.v("debug",String.format("Line:%s,column:%s",numbers,numbersOfColumn));
-                            return getPiecesByLineAndColumn(numbers,numbersOfColumn);
-                        }
-                    }
-                }
+        }
+        return null;
+    }
+    public Boolean findXYChain(){
+        //寻找xy_chain (xy)--(yz)--(zw)--(wx),那么删除起点和终点的x -weaklist
+        //找到就返回true,结果存储在chainList,否则返回false
 
-                //找出n行，备选数字仅出现在x=numbers列中
-                Numbers numbersOfLine = new Numbers(); //符合要求的行
-                for(int y=0; y<getMaxY(sudokuType); y++){
-                    Boolean otherPlaceHaveMini = false; //y行其他地方是否包含备选数字
-                    Boolean haveMini = false; //该行是否包含备选数字
-                    for(int x=0; x<getMaxX(sudokuType); x++){
-                        if(pieces[x][y].getNumber() > 0 || !pieces[x][y].haveMiniNumber(miniNumber)){
-                            continue;
-                        }
-                        if(!numbers.include(x)){ //x位置不在numbers的列中
-                            otherPlaceHaveMini = true;
-                            break;
-                        }else{
-                            haveMini = true;
-                        }
-                    }
-                    if(otherPlaceHaveMini == false && haveMini){
-                        numbersOfLine.addNumber(y);
-                    }
-                }
-                if(numbersOfLine.count() != n){
+        bestChainList = null;
+        for(int x1=0; x1<getMaxX(sudokuType); x1++){
+            for(int y1=0; y1<getMaxY(sudokuType); y1++){
+                //找起点：xy
+                if(pieces[x1][y1].getNumber() > 0 || pieces[x1][y1].getMiniNumbers().length != 2){
                     continue;
                 }
-                //有n行满足要求，还要看看x=numbers[n]列，除了numbersOfLine[n]行以外，是否还有其他地方出现（可以删除）
-                for(int j=0; j<numbers.count(); j++){
-                    int x = numbers.getNumbers().get(j);
-                    for(int y=0; y<getMaxY(sudokuType); y++){
-                        if(pieces[x][y].getNumber() > 0 || !pieces[x][y].haveMiniNumber(miniNumber)){
-                            continue;
-                        }
-                        if(!numbersOfLine.include(y)){
-                            //找到了其他地方还出现备选数字
-                            Log.v("debug",String.format("return Line:%s,column:%s",numbersOfLine,numbers));
-                            return getPiecesByLineAndColumn(numbersOfLine,numbers);
-                        }
+                SudokuPiece startPiece = pieces[x1][y1];
+
+                for(int i=0; i<2; i++){
+                    int X,Y;
+                    chainList = new ArrayList<>();
+                    if(i==0){
+                        X = startPiece.getMiniNumbers()[0];
+                        Y = startPiece.getMiniNumbers()[1];
+                    }else{
+                        X = startPiece.getMiniNumbers()[1];
+                        Y = startPiece.getMiniNumbers()[0];
                     }
+                    chainList.add(startPiece);
+                    hintMiniNumber = X;
+                    Log.v("debug",String.format("start search xy-chain(X=%d) A:",X,startPiece.toDBString()));
+                    //递归寻找xy-chain
+                    /*if(searchNextXYChainNode(startPiece,Y)){
+                        return true;
+                    }*/
+                    searchNextXYChainNode(startPiece,Y);
                 }
             }
         }
-        return  null;
+        if(bestChainList != null){
+            return true;
+        }
+        return false;
+    }
+    private ChainNode[][] createChainNet(int miniNumber){
+        //构建链关系网
+        int maxX = getMaxX(sudokuType);
+        int maxY = getMaxY(sudokuType);
+        ChainNode[][] chainNet = new ChainNode[maxX][maxY];
+        for(int x=0; x<maxX; x++){
+            for(int y=0; y<maxY; y++){
+                if(pieces[x][y].getNumber() == 0 && pieces[x][y].haveMiniNumber(miniNumber)) {
+                    chainNet[x][y] = new ChainNode(pieces[x][y],
+                            getWeakChainPieces(pieces[x][y], miniNumber),
+                            getStrongChainPieces(pieces[x][y], miniNumber));
+                }else{
+                    chainNet[x][y] = null;
+                }
+            }
+        }
+        return chainNet;
+    }
+    private Boolean searchNextXYChainNode(SudokuPiece currentPiece,int currentMiniNumber){
+        //currentPiece for example: xy,
+        //currentMiniNumber for example: y
+        List<SudokuPiece> weakList = getWeakChainPieces(currentPiece,currentMiniNumber);
+        if(weakList == null){ return false; }
+        //找nextPiece
+        for(int j=0; j<weakList.size(); j++) {
+            SudokuPiece nextPiece = weakList.get(j);
+            //必须仅含两个备选数字
+            if (nextPiece.getNumber() > 0 || nextPiece.getMiniNumbers().length != 2) {
+                continue;
+            }
+            // 排除掉chainList中重复的piece
+            if(isInPieceList(chainList,nextPiece)){
+                continue;
+            }
+            //push
+            chainList.add(nextPiece);
+            //获取下一个miniNumber,非currentMiniNumber
+            int nextMiniNumber;
+            if (nextPiece.getMiniNumbers()[0] == currentMiniNumber) {
+                nextMiniNumber = nextPiece.getMiniNumbers()[1];
+            } else {
+                nextMiniNumber = nextPiece.getMiniNumbers()[0];
+            }
+            //如果nextMiniNumber等于ChainMiniNumber,那么获取起点和终点交叉的weakList
+            if (nextMiniNumber == hintMiniNumber) {
+                List<SudokuPiece> outPieceList = getWeakChainPieces(chainList.get(0),nextPiece, hintMiniNumber);
+                if(outPieceList != null && outPieceList.size() > 0){
+                    Log.v("debug","to delete :"+pieceListToString(outPieceList));
+                    //return true;
+                    if(bestChainList == null){
+                        bestChainList = copyPieceList(chainList);
+                        bestChainX = hintMiniNumber;
+                    }else{
+                        if(bestChainList.size() > chainList.size()){
+                            bestChainList = copyPieceList(chainList);
+                            bestChainX = hintMiniNumber;
+                        }
+                    }
+                }
+                //否则就回退
+                chainList.remove(chainList.size()-1);
+                return false;
+            }
+            //继续搜索下一个节点
+            if(searchNextXYChainNode(nextPiece,nextMiniNumber)){
+                return true;
+            }
+            //pop
+            chainList.remove(chainList.size()-1);
+        }
+        return false;
+    }
+    private Boolean searchNextChainNode(SudokuPiece piece, int flag){
+        //搜索piece的下一个强/弱关系节点，如果找到可应用的链就存储在bestChainList
+        if(piece == null){
+            return false;
+        }
+        //piece已经存在链表中，就不再搜索下去,避免死循环。
+        if(isInPieceList(chainList,piece)){
+            SudokuPiece startPiece = chainList.get(0);
+            if(piece.x == startPiece.x && piece.y == startPiece.y) {
+                if (chainList.size() > 2) {
+                    //构成了一个环
+                    if (chainList.size() % 2 == 1) {
+                        //(不包括最后一个）链表的个数是奇数，才会出现强进强出或弱进弱出
+                        if (startFlag == CHAIN_STRONG_ALTERNATE) {
+                            //强进强出  A==A，A为真
+                            //chainList.add(piece);
+                            Log.v("debug", String.format("list add cycle Strong:%d,%d", piece.x, piece.y));
+                            if(bestChainList == null){
+                                bestChainList = copyPieceList(chainList);
+                                bestChainList.add(piece);
+                                bestChainX = hintMiniNumber;
+                                bestStartFlag = startFlag;
+                            }else{
+                                if(bestChainList.size() > chainList.size()){
+                                    bestChainList = copyPieceList(chainList);
+                                    bestChainList.add(piece);
+                                    bestChainX = hintMiniNumber;
+                                    bestStartFlag = startFlag;
+                                }
+                            }
+                            //chainList.remove(piece);
+                            return true;
+                        } else {
+                            //弱进弱出 A--A，A为假
+                            //chainList.add(piece);
+                            Log.v("debug", String.format("list add cycle weak:%d,%d", piece.x, piece.y));
+                            if(bestChainList == null){
+                                bestChainList = copyPieceList(chainList);
+                                bestChainList.add(piece);
+                                bestChainX = hintMiniNumber;
+                                bestStartFlag = startFlag;
+                            }else{
+                                if(bestChainList.size() > chainList.size()){
+                                    bestChainList = copyPieceList(chainList);
+                                    bestChainList.add(piece);
+                                    bestChainX = hintMiniNumber;
+                                    bestStartFlag = startFlag;
+                                }
+                            }
+                            //chainList.remove(piece);
+                            return true;
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+        /*if(flag == CHAIN_STRONG_ALTERNATE) {
+            Log.v("debug", String.format("list add STRONG:%d,%d", piece.x, piece.y));
+        }else{
+            Log.v("debug", String.format("list add WEAK:%d,%d", piece.x, piece.y));
+        }*/
+        chainList.add(piece);         //piece加入list
+        //如果有应用就返回true
+        if(chainList.size() > 2 && chainList.size() % 2 == 0){
+            if(startFlag == CHAIN_STRONG_ALTERNATE){
+                //强进强出，那么起点A和当前pieceD构成强链关系，可以删除A,D之间交叉的弱链
+                List<SudokuPiece> outPieceList = getWeakChainPieces(chainList.get(0),piece, hintMiniNumber);
+                if(outPieceList != null && outPieceList.size() > 0){
+                    Log.v("debug","return true for strong");
+                    if(bestChainList == null){
+                        bestChainList = copyPieceList(chainList);
+                        bestChainX = hintMiniNumber;
+                        bestStartFlag = startFlag;
+                    }else{
+                        if(bestChainList.size() > chainList.size()){
+                            bestChainList = copyPieceList(chainList);
+                            bestChainX = hintMiniNumber;
+                            bestStartFlag = startFlag;
+                        }
+                    }
+                    chainList.remove(piece);
+                    return true;
+                }
+            }
+        }
+        //否则继续搜索下一个节点
+        int x = piece.x;
+        int y = piece.y;
+        if(flag == CHAIN_STRONG_ALTERNATE){
+            if(chainNet[x][y].strongList != null){
+                List<SudokuPiece> strongList = chainNet[x][y].strongList;
+                for(int i=0; i<strongList.size(); i++){
+                    /*if(searchNextChainNode(strongList.get(i), CHAIN_WEAK_ALTERNATE)){
+                        return true;
+                    }*/
+                    searchNextChainNode(strongList.get(i), CHAIN_WEAK_ALTERNATE);
+                }
+            }
+        }else{
+            if(chainNet[x][y].weakList != null){
+                List<SudokuPiece> weakList = chainNet[x][y].weakList;
+                for(int i=0; i<weakList.size(); i++){
+                    /*if(searchNextChainNode(weakList.get(i), CHAIN_STRONG_ALTERNATE)){
+                        return true;
+                    }*/
+                    searchNextChainNode(weakList.get(i), CHAIN_STRONG_ALTERNATE);
+                }
+            }
+        }
+        //回退，删除最后一个节点
+        if(chainList.size() >= 1) {
+            chainList.remove(chainList.size() - 1);
+            /*if(flag == CHAIN_STRONG_ALTERNATE) {
+                Log.v("debug", String.format("list pop STRONG:%d,%d", piece.x, piece.y));
+            }else{
+                Log.v("debug", String.format("list pop WEAK:%d,%d", piece.x, piece.y));
+            }*/
+        }
+        return false;
     }
     //去除pieceList中已经填写bigNumber的piece
     private List<SudokuPiece> removeBigNumberPiece(List<SudokuPiece> pieceList){
@@ -2227,6 +2434,13 @@ public class SudokuBoard extends Board{
                 }
                 if(onlyInclude){
                     pieceList.add(piece);
+                }else{
+                    //不仅仅包含组合数字的piece,找出包含组合数字中的数字
+                    for(int k=0; k<numbers.getNumbers().size(); k++){
+                        if(piece.haveMiniNumber(numbers.getNumbers().get(k))){
+                            hintMiniNumber = numbers.getNumbers().get(k);
+                        }
+                    }
                 }
             }
             if (pieceList.size() == numbers.count()){
@@ -2556,103 +2770,8 @@ public class SudokuBoard extends Board{
         }
         return pieceList;
     }
-    private ChainNode[][] createChainNet(int miniNumber){
-        //构建链关系网
-        int maxX = getMaxX(sudokuType);
-        int maxY = getMaxY(sudokuType);
-        ChainNode[][] chainNet = new ChainNode[maxX][maxY];
-        for(int x=0; x<maxX; x++){
-            for(int y=0; y<maxY; y++){
-                if(pieces[x][y].getNumber() == 0 && pieces[x][y].haveMiniNumber(miniNumber)) {
-                    chainNet[x][y] = new ChainNode(pieces[x][y],
-                            getWeakChainPieces(pieces[x][y], miniNumber),
-                            getStrongChainPieces(pieces[x][y], miniNumber));
-                }else{
-                    chainNet[x][y] = null;
-                }
-            }
-        }
-        return chainNet;
-    }
-    private Boolean searchNextChainNode(SudokuPiece piece, int flag){
-        //搜索piece的下一个强/弱关系节点，如果找到应用就返回，或者无可用节点搜索也返回false
-        if(piece == null){
-            return false;
-        }
-        //piece已经存在链表中，就不再搜索下去,避免死循环。
-        if(isInPieceList(chainList,piece)){
-            SudokuPiece startPiece = chainList.get(0);
-            if(piece.x == startPiece.x && piece.y == startPiece.y) {
-                if (chainList.size() > 2) {
-                    //构成了一个环
-                    if (chainList.size() % 2 == 1) {
-                        //(不包括最后一个）链表的个数是奇数，才会出现强进强出或弱进弱出
-                        if (startFlag == CHAIN_STRONG_ALTERNATE) {
-                            //强进强出  A==A，A为真
-                            chainList.add(piece);
-                            Log.v("debug", String.format("list add cycle Strong:%d,%d", piece.x, piece.y));
-                            return true;
-                        } else {
-                            //弱进弱出 A--A，A为假
-                            chainList.add(piece);
-                            Log.v("debug", String.format("list add cycle weak:%d,%d", piece.x, piece.y));
-                            return true;
-                        }
-                    }
-                }
-            }
-            return false;
-        }
-        if(flag == CHAIN_STRONG_ALTERNATE) {
-            Log.v("debug", String.format("list add STRONG:%d,%d", piece.x, piece.y));
-        }else{
-            Log.v("debug", String.format("list add WEAK:%d,%d", piece.x, piece.y));
-        }
-        chainList.add(piece);         //piece加入list
-        //如果有应用就返回true
-        if(chainList.size() > 2 && chainList.size() % 2 == 0){
-            if(startFlag == CHAIN_STRONG_ALTERNATE){
-                //强进强出，那么起点A和当前pieceD构成强链关系，可以删除A,D之间交叉的弱链
-                List<SudokuPiece> outPieceList = getWeakChainPieces(chainList.get(0),piece, hintMiniNumber);
-                if(outPieceList != null && outPieceList.size() > 0){
-                    Log.v("debug","return true for strong");
-                    return true;
-                }
-            }
-        }
-        //否则继续搜索下一个节点
-        int x = piece.x;
-        int y = piece.y;
-        if(flag == CHAIN_STRONG_ALTERNATE){
-            if(chainNet[x][y].strongList != null){
-                List<SudokuPiece> strongList = chainNet[x][y].strongList;
-                for(int i=0; i<strongList.size(); i++){
-                    if(searchNextChainNode(strongList.get(i), CHAIN_WEAK_ALTERNATE)){
-                        return true;
-                    }
-                }
-            }
-        }else{
-            if(chainNet[x][y].weakList != null){
-                List<SudokuPiece> weakList = chainNet[x][y].weakList;
-                for(int i=0; i<weakList.size(); i++){
-                    if(searchNextChainNode(weakList.get(i), CHAIN_STRONG_ALTERNATE)){
-                        return true;
-                    }
-                }
-            }
-        }
-        //回退，删除最后一个节点
-        if(chainList.size() >= 1) {
-            chainList.remove(chainList.size() - 1);
-            if(flag == CHAIN_STRONG_ALTERNATE) {
-                Log.v("debug", String.format("list pop STRONG:%d,%d", piece.x, piece.y));
-            }else{
-                Log.v("debug", String.format("list pop WEAK:%d,%d", piece.x, piece.y));
-            }
-        }
-        return false;
-    }
+
+
     public void fillMiniNumbers(){
         //填入所有备选数字
         int maxX = getMaxX(sudokuType);
@@ -3478,6 +3597,9 @@ public class SudokuBoard extends Board{
                 outPieceList.add(inPieceList.get(i));
             }
         }
+        if(outPieceList.size() == 0){
+            return null;
+        }
         return outPieceList;
     }
     private static List<SudokuPiece> getPiecesByXDiagnoal(List<SudokuPiece> inPieceList,int miniNumber){
@@ -4133,6 +4255,22 @@ class Numbers{
             }
             return numbersList;
         }
+    }
+    public static List<Numbers> findAllCombinationFrom0(int number,int N){
+        //从0-number，随机选择N个数字
+        List<Integer> intList = new ArrayList<>();
+        for(int i=0; i<=number; i++){
+            intList.add(i);
+        }
+        return findAllCombination(intList,N);
+    }
+    public static List<Numbers> findAllCombinationFrom1(int number,int N){
+        //从1-number，随机选择N个数字
+        List<Integer> intList = new ArrayList<>();
+        for(int i=1; i<=number; i++){
+            intList.add(i);
+        }
+        return findAllCombination(intList,N);
     }
     public static List<Numbers> addNumbersList(List<Numbers> list1, List<Numbers> list2){
         if((list1 == null || list1.size() == 0) && (list2 == null || list2.size() == 0)){
